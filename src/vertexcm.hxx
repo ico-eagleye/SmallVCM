@@ -150,15 +150,18 @@ class VertexCM : public AbstractRenderer
             // Even though this is pdf from camera BSDF, the continuation probability
             // must come from light BSDF, because that would govern it if light path
             // actually continued
-            cameraBsdfRevPdfW *= aLightVertex.mBsdf.ContinuationProb();
+            cameraBsdfRevPdfW *= aLightVertex.mBsdf.ContinuationProb();		// vmarz!: review
 
             // Partial light sub-path MIS weight [tech. rep. (38)]
             const float wLight = aLightVertex.dVCM * mVertexCM.mMisVcWeightFactor +
                 aLightVertex.dVM * mVertexCM.Mis(cameraBsdfDirPdfW);
+			// vmarz?: why cameraDirPdf when formula has s-2, e.g. pdf of the vertex before merged vertex?
+			// because pdf is reverse in relation to light paht Y, e.g. it's pdf of (s-2)<-(s-1)<-(s)
 
             // Partial eye sub-path MIS weight [tech. rep. (39)]
             const float wCamera = mCameraState.dVCM * mVertexCM.mMisVcWeightFactor +
                 mCameraState.dVM * mVertexCM.Mis(cameraBsdfRevPdfW);
+			// vmarz: check reasoning above why cameraRevPdf used
 
             // Full path MIS weight [tech. rep. (37)]. No MIS for PPM
             const float misWeight = mVertexCM.mPpm ?
@@ -289,7 +292,7 @@ public:
         const int resY = int(mScene.mCamera.mResolution.y);
         const int pathCount = resX * resY;
         mScreenPixelCount = float(resX * resY);
-        mLightSubPathCount   = float(resX * resY);
+        mLightSubPathCount = float(resX * resY);
 
         // Setup our radius, 1st iteration has aIteration == 0, thus offset
         float radius = mBaseRadius;
@@ -298,6 +301,7 @@ public:
         radius = std::max(radius, 1e-7f);
         const float radiusSqr = Sqr(radius);
 
+		// vmarz?: TODO check what exactly is this?
         // Factor used to normalise vertex merging contribution.
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
@@ -352,8 +356,9 @@ public:
                     // Infinite lights use MIS handled via solid angle integration,
                     // so do not divide by the distance for such lights [tech. rep. Section 5.1]
                     if(lightState.mPathLength > 1 || lightState.mIsFiniteLight == 1)
-                        lightState.dVCM *= Mis(Sqr(isect.dist));
+                        lightState.dVCM *= Mis(Sqr(isect.dist)); // vmarz: from g in p1
 
+					// vmarz: from g in p1
                     lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix()));
                     lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix()));
                     lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix()));
@@ -376,6 +381,7 @@ public:
                     mLightVertices.push_back(lightVertex);
                 }
 
+				// vmarz: mandatory?
                 // Connect to camera, unless BSDF is purely specular
                 if(!bsdf.IsDelta() && (mUseVC || mLightTraceOnly))
                 {
@@ -384,7 +390,7 @@ public:
                 }
 
                 // Terminate if the path would become too long after scattering
-                if(lightState.mPathLength + 2 > mMaxPathLength)
+                if(lightState.mPathLength + 2 > mMaxPathLength) // vmarz?: why +2 ?
                     break;
 
                 // Continue random walk
@@ -501,6 +507,9 @@ public:
                     // sub-path, as in traditional BPT. It is also possible to
                     // connect to vertices from any light path, but MIS should
                     // be revisited.
+					
+					// vmarz?: doesn't it imply need to revisit MIS also if using Light Vertex Cache?
+					// I guess just means need to be computed correclty, e.g. cases of delayed computation of some factors
                     const Vec2i range(
                         (pathIdx == 0) ? 0 : mPathEnds[pathIdx-1],
                         mPathEnds[pathIdx]);
@@ -642,8 +651,9 @@ private:
         if(mUseVM && !mUseVC)
             return aCameraState.mSpecularPath ? radiance : Vec3f(0);
 
-        directPdfA   *= lightPickProb;
-        emissionPdfW *= lightPickProb;
+        directPdfA   *= lightPickProb; // vmarz: p0connect in tech. rep
+        emissionPdfW *= lightPickProb; // vmarz: p0trace in tech. rep
+		// vmarz: A for area, W for solid angle ?
 
         // Partial eye sub-path MIS weight [tech. rep. (43)].
         // If the last hit was specular, then dVCM == 0.
@@ -793,6 +803,9 @@ private:
         // Partial light sub-path MIS weight [tech. rep. (40)]
         const float wLight = Mis(cameraBsdfDirPdfA) * (
             mMisVmWeightFactor + aLightVertex.dVCM + aLightVertex.dVC * Mis(lightBsdfRevPdfW));
+		// vmarz: lightBsdfRevPdfW is Reverse with respect to light path, e.g. in eye path progression 
+		// dirrection (note same arrow dirs in formula)
+		// note (40) and (41) uses light subpath Y and camera subpath z
 
         // Partial eye sub-path MIS weight [tech. rep. (41)]
         const float wCamera = Mis(lightBsdfDirPdfA) * (
@@ -830,6 +843,7 @@ private:
         oLightState.mThroughput = light->Emit(mScene.mSceneSphere, rndDirSamples, rndPosSamples,
             oLightState.mOrigin, oLightState.mDirection,
             emissionPdfW, &directPdfW, &cosLight);
+		// vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
 
         emissionPdfW *= lightPickProb;
         directPdfW   *= lightPickProb;
@@ -842,7 +856,8 @@ private:
         // The evaluation is completed after tracing the emission ray in the light sub-path loop.
         // Delta lights are handled as well [tech. rep. (48)-(50)].
         {
-            oLightState.dVCM = Mis(directPdfW / emissionPdfW);
+            oLightState.dVCM = Mis(directPdfW / emissionPdfW); // vmarz: p0_connect/p0_trace
+			// vmarz: dVCM partial, still needs 1/p1
 
             if(!light->IsDelta())
             {
@@ -855,6 +870,7 @@ private:
             }
 
             oLightState.dVM = oLightState.dVC * mMisVcWeightFactor;
+			// vmarz: dVC and dVM partial, still need to be multiplied divided by (distSqr*p1)
         }
     }
 

@@ -151,6 +151,8 @@ public:
             return Vec3f(0.f);
         }
 
+		// vmarz: converts area sampling pdf mInvArea to pdf w.r.t solid angle 
+		// (mult with inverse of W to A conversion factor cos/distSqr)
         oDirectPdfW = mInvArea * distSqr / cosNormalDir;
 
         if(oCosAtLight)

@@ -139,7 +139,7 @@ public:
 
         const Vec3f localDirGen = mFrame.ToLocal(aWorldDirGen);
 
-        if(localDirGen.z * mLocalDirFix.z < 0)
+        if(localDirGen.z * mLocalDirFix.z < 0) // vmarz: checks if in same hemisphere
             return result;
 
         oCosThetaGen = std::abs(localDirGen.z);
@@ -559,7 +559,7 @@ private:
                 (aMaterial.mDiffuseReflectance +
                 aMaterial.mPhongReflectance +
                 mReflectCoeff * aMaterial.mMirrorReflectance).Max() +
-                (1.f - mReflectCoeff);
+                (1.f - mReflectCoeff); // vmarz?: why add amount of transmitted ?
 
             mContinuationProb = std::min(1.f, std::max(0.f, mContinuationProb));
         }

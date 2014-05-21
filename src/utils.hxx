@@ -40,6 +40,8 @@ float Luminance(const Vec3f& aRGB)
         0.072169f * aRGB.z;
 }
 
+// vmarz: always asumes one of the mediums to be air, hence doesn't take cosTransmitted, but calculates using Snell's law
+// return fraction of reflected light due to hit from dir with aCosInc
 float FresnelDielectric(
     float aCosInc,
     float mIOR)
@@ -49,7 +51,7 @@ float FresnelDielectric(
 
     float etaIncOverEtaTrans;
 
-    if(aCosInc < 0.f)
+    if(aCosInc < 0.f)		// vmarz?: determines if hit from inside/outside?
     {
         aCosInc = -aCosInc;
         etaIncOverEtaTrans = mIOR;
@@ -174,13 +176,13 @@ Vec3f SampleCosHemisphereW(
     const Vec2f  &aSamples,
     float        *oPdfW)
 {
-    const float term1 = 2.f * PI_F * aSamples.x;
-    const float term2 = std::sqrt(1.f - aSamples.y);
+    const float term1 = 2.f * PI_F * aSamples.x;	 // phi
+    const float term2 = std::sqrt(1.f - aSamples.y); // 1 unit vec len; aSamples.y = z^2; sqrt(1-z^2) len of projection on xy plane
 
     const Vec3f ret(
         std::cos(term1) * term2,
         std::sin(term1) * term2,
-        std::sqrt(aSamples.y));
+        std::sqrt(aSamples.y));		// aSamples.y = z^2; z = cos(theta)
 
     if(oPdfW)
     {
