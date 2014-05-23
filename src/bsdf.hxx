@@ -559,7 +559,7 @@ private:
                 (aMaterial.mDiffuseReflectance +
                 aMaterial.mPhongReflectance +
                 mReflectCoeff * aMaterial.mMirrorReflectance).Max() +
-                (1.f - mReflectCoeff); // vmarz?: why add amount of transmitted ?
+                (1.f - mReflectCoeff); // vmarz: adds transmission possibility to path continuation probability
 
             mContinuationProb = std::min(1.f, std::max(0.f, mContinuationProb));
         }

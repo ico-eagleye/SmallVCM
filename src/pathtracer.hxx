@@ -162,8 +162,10 @@ public:
                             float weight = 1.f;
                             if(!light->IsDelta())
                             {
+								// vmarz: scaled by contProb to account for general path continuation probability
+								// for bsdf sampled paths (as used below in Russian roulette)
                                 const float contProb = bsdf.ContinuationProb();
-                                bsdfPdfW *= contProb;  // vmarz?
+                                bsdfPdfW *= contProb;
 								// vmarz: wights directly sampled light pdf by pdf of hitpoint bsdf 
                                 weight = Mis2(directPdfW * lightPickProb, bsdfPdfW);
                             }
