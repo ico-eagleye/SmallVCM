@@ -227,6 +227,8 @@ public:
 
     Vec3f p0, e1, e2;
     Frame mFrame;
+	// vmarz: In case of area and directional light, represents radiance.
+	// Intensity (flux densuty per solid angle) meaningful only for point lights
     Vec3f mIntensity;
     float mInvArea;
 };

@@ -301,10 +301,11 @@ public:
         radius = std::max(radius, 1e-7f);
         const float radiusSqr = Sqr(radius);
 
-		// vmarz?: TODO check what exactly is this?
         // Factor used to normalise vertex merging contribution.
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
+		// vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
+		// vmarz?: why mLightSubPathCount? because of N_vm in [tech. rep. (11)] ?
 
         // MIS weight constant [tech. rep. (20)], with n_VC = 1 and n_VM = mLightPathCount
         const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount;
@@ -541,6 +542,8 @@ public:
                     RangeQuery query(*this, hitPoint, bsdf, cameraState);
                     mHashGrid.Process(mLightVertices, query);
                     color += cameraState.mThroughput * mVmNormalization * query.GetContrib();
+					// vmarz: path pdfs already divided into camera Throughput (and light Throughput in RangeQuery.Process)
+					// vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
 
                     // PPM merges only at the first non-specular surface from camera
                     if(mPpm) break;
