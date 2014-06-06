@@ -360,10 +360,10 @@ public:
                         lightState.dVCM *= Mis(Sqr(isect.dist)); // vmarz: from g in p1
 
 					// vmarz: from g in p1
-                    lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix()));
-                    lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix()));
-                    lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix()));
-                }
+                    lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix())); // vmarz?: why abs here?
+                    lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix())); // not really needed since bsdf initialization
+                    lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix())); // rejects rays when abs(mLocalDirFix.z) < EPS_COSINE by not setting materialID and
+                }                                                         // causing bsdf.IsValid() to false which is checked few lines above for continuation
 
                 // Store vertex, unless BSDF is purely specular, which prevents
                 // vertex connections and merging
@@ -561,9 +561,9 @@ public:
 
 private:
 
-    // Mis power, we use balance heuristic
-    float Mis(float aPdf) const
-    {
+    // Mis power, we use balance heuristic 
+    float Mis(float aPdf) const     // vmarz: No Mis2() as in pathtracer.cxx because whole MIS weight partitioned.
+    {                               // Here only chosen power heuristic factor is potentially applied
         //return std::pow(aPdf, /*power*/);
         return aPdf;
     }
