@@ -155,13 +155,13 @@ class VertexCM : public AbstractRenderer
             // Partial light sub-path MIS weight [tech. rep. (38)]
             const float wLight = aLightVertex.dVCM * mVertexCM.mMisVcWeightFactor +
                 aLightVertex.dVM * mVertexCM.Mis(cameraBsdfDirPdfW);
-			// vmarz?: why cameraDirPdf when formula has s-2, e.g. pdf of the vertex before merged vertex?
-			// because pdf is reverse in relation to light paht Y, e.g. it's pdf of (s-2)<-(s-1)<-(s)
+            // vmarz?: why cameraDirPdf when formula has s-2, e.g. pdf of the vertex before merged vertex?
+            // because pdf is reverse in relation to light paht Y, e.g. it's pdf of (s-2)<-(s-1)<-(s)
 
             // Partial eye sub-path MIS weight [tech. rep. (39)]
             const float wCamera = mCameraState.dVCM * mVertexCM.mMisVcWeightFactor +
                 mCameraState.dVM * mVertexCM.Mis(cameraBsdfRevPdfW);
-			// vmarz: check reasoning above why cameraRevPdf used
+            // vmarz: check reasoning above why cameraRevPdf used
 
             // Full path MIS weight [tech. rep. (37)]. No MIS for PPM
             const float misWeight = mVertexCM.mPpm ?
@@ -304,8 +304,8 @@ public:
         // Factor used to normalise vertex merging contribution.
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
-		// vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
-		// vmarz?: why mLightSubPathCount? because of N_vm in [tech. rep. (11)] ?
+        // vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
+        // vmarz?: why mLightSubPathCount? because of N_vm in [tech. rep. (11)]
 
         // MIS weight constant [tech. rep. (20)], with n_VC = 1 and n_VM = mLightPathCount
         const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount;
@@ -357,9 +357,11 @@ public:
                     // Infinite lights use MIS handled via solid angle integration,
                     // so do not divide by the distance for such lights [tech. rep. Section 5.1]
                     if(lightState.mPathLength > 1 || lightState.mIsFiniteLight == 1)
-                        lightState.dVCM *= Mis(Sqr(isect.dist)); // vmarz: from g in p1
+                        lightState.dVCM *= Mis(Sqr(isect.dist)); 
+                    // vmarz: from g in 1/p1 (or 1/pi)
+                    //        for dVC and dVM sqr(dist) terms cancel out, see explanation in SampleScattering()
 
-					// vmarz: from g in p1
+                    // vmarz: from g in p1 (or 1/pi)
                     lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix())); // vmarz?: why abs here?
                     lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix())); // not really needed since bsdf initialization
                     lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix())); // rejects rays when abs(mLocalDirFix.z) < EPS_COSINE by not setting materialID and
@@ -382,7 +384,7 @@ public:
                     mLightVertices.push_back(lightVertex);
                 }
 
-				// vmarz: mandatory?
+                // vmarz: mandatory?
                 // Connect to camera, unless BSDF is purely specular
                 if(!bsdf.IsDelta() && (mUseVC || mLightTraceOnly))
                 {
@@ -508,9 +510,9 @@ public:
                     // sub-path, as in traditional BPT. It is also possible to
                     // connect to vertices from any light path, but MIS should
                     // be revisited.
-					
-					// vmarz?: doesn't it imply need to revisit MIS also if using Light Vertex Cache?
-					// I guess just means need to be computed correclty, e.g. cases of delayed computation of some factors
+                    
+                    // vmarz?: doesn't it imply need to revisit MIS also if using Light Vertex Cache?
+                    // I guess just means need to be computed correclty, e.g. cases of delayed computation of some factors
                     const Vec2i range(
                         (pathIdx == 0) ? 0 : mPathEnds[pathIdx-1],
                         mPathEnds[pathIdx]);
@@ -542,8 +544,8 @@ public:
                     RangeQuery query(*this, hitPoint, bsdf, cameraState);
                     mHashGrid.Process(mLightVertices, query);
                     color += cameraState.mThroughput * mVmNormalization * query.GetContrib();
-					// vmarz: path pdfs already divided into camera Throughput (and light Throughput in RangeQuery.Process)
-					// vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
+                    // vmarz: path pdfs already divided into camera Throughput (and light Throughput in RangeQuery.Process)
+                    // vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
 
                     // PPM merges only at the first non-specular surface from camera
                     if(mPpm) break;
@@ -600,9 +602,9 @@ private:
         // that the pixel area is one and thus the image plane sampling pdf is 1.
         // The solid angle ray pdf is then equal to the conversion factor from
         // image plane area density to ray solid angle density
-        const float cameraPdfW = imageToSolidAngleFactor;
-
-        oCameraState.mOrigin       = primaryRay.org;
+        const float cameraPdfW = imageToSolidAngleFactor /* * areaPdf */; // vmarz: areaPdf = 1/area = 1/1 = 1
+                                                                          // cameraPdf is pi (
+        oCameraState.mOrigin       = primaryRay.org;                      // p0_connect = areaPdf = 1 
         oCameraState.mDirection    = primaryRay.dir;
         oCameraState.mThroughput   = Vec3f(1);
 
@@ -611,7 +613,7 @@ private:
 
         // Eye sub-path MIS quantities. Implements [tech. rep. (31)-(33)] partially.
         // The evaluation is completed after tracing the camera ray in the eye sub-path loop.
-        oCameraState.dVCM = Mis(mLightSubPathCount / cameraPdfW);
+        oCameraState.dVCM = Mis( /* p0_connect * */ mLightSubPathCount / cameraPdfW);
         oCameraState.dVC  = 0;
         oCameraState.dVM  = 0;
 
@@ -656,7 +658,7 @@ private:
 
         directPdfA   *= lightPickProb; // vmarz: p0connect in tech. rep
         emissionPdfW *= lightPickProb; // vmarz: p0trace in tech. rep
-		// vmarz: A for area, W for solid angle ?
+        // vmarz: A for area, W for solid angle ?
 
         // Partial eye sub-path MIS weight [tech. rep. (43)].
         // If the last hit was specular, then dVCM == 0.
@@ -806,9 +808,9 @@ private:
         // Partial light sub-path MIS weight [tech. rep. (40)]
         const float wLight = Mis(cameraBsdfDirPdfA) * (
             mMisVmWeightFactor + aLightVertex.dVCM + aLightVertex.dVC * Mis(lightBsdfRevPdfW));
-		// vmarz: lightBsdfRevPdfW is Reverse with respect to light path, e.g. in eye path progression 
-		// dirrection (note same arrow dirs in formula)
-		// note (40) and (41) uses light subpath Y and camera subpath z
+        // vmarz: lightBsdfRevPdfW is Reverse with respect to light path, e.g. in eye path progression 
+        // dirrection (note same arrow dirs in formula)
+        // note (40) and (41) uses light subpath Y and camera subpath z
 
         // Partial eye sub-path MIS weight [tech. rep. (41)]
         const float wCamera = Mis(lightBsdfDirPdfA) * (
@@ -846,7 +848,7 @@ private:
         oLightState.mThroughput = light->Emit(mScene.mSceneSphere, rndDirSamples, rndPosSamples,
             oLightState.mOrigin, oLightState.mDirection,
             emissionPdfW, &directPdfW, &cosLight);
-		// vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
+        // vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
 
         emissionPdfW *= lightPickProb;
         directPdfW   *= lightPickProb;
@@ -859,21 +861,22 @@ private:
         // The evaluation is completed after tracing the emission ray in the light sub-path loop.
         // Delta lights are handled as well [tech. rep. (48)-(50)].
         {
-            oLightState.dVCM = Mis(directPdfW / emissionPdfW); // vmarz: p0_connect/p0_trace
-			// vmarz: dVCM partial, still needs 1/p1
-
-            if(!light->IsDelta())
-            {
+            oLightState.dVCM = Mis(directPdfW / emissionPdfW); // vmarz: dVCM_1 = p0_connect / ( p0_trace * p1 )   [connect/trace potentially different points sampling techniques]
+                                                               //        directPdfW = p0_connect = areaSamplePdf * lightPickPdf
+                                                               //        emissionPdfW = p0_trace * p1 
+            if(!light->IsDelta())                              //           p0_trace = areaSamplePdf * lightPickPdf
+            {                                                  //           p1 = cosineSamplePdf * g1 = (cos / Pi) * g1 [g1 added after tracing]
                 const float usedCosLight = light->IsFinite() ? cosLight : 1.f;
-                oLightState.dVC = Mis(usedCosLight / emissionPdfW);
-            }
-            else
-            {
+                oLightState.dVC = Mis(usedCosLight / emissionPdfW);  // vmarz: dVC_1 = _g0 / ( p0_trace * p1 )   [connect/trace potentially different points sampling techniques]
+            }                                                        //        usedCosLight is part of _g0   [ _g - reverse pdf conversion factor!, uses outgoing cos not incident at next vertex]
+            else                                                     //           [sqr(dist) from _g0 added after tracing]
+            {                                                        //        emissionPdfW = p0_trace * p1 
                 oLightState.dVC = 0.f;
             }
 
             oLightState.dVM = oLightState.dVC * mMisVcWeightFactor;
-			// vmarz: dVC and dVM partial, still need to be multiplied divided by (distSqr*p1)
+            // vmarz: dVM_1 = dVC_1 / etaVCM
+            //        [sqr(dist) from _g0 added after tracing]
         }
     }
 
@@ -1006,19 +1009,19 @@ private:
         else
         {
             // Implements [tech. rep. (34)-(36)] (partially, as noted above)
-            aoState.dVC = Mis(cosThetaOut / bsdfDirPdfW) * (
-                aoState.dVC * Mis(bsdfRevPdfW) +
-                aoState.dVCM + mMisVmWeightFactor);
-
-            aoState.dVM = Mis(cosThetaOut / bsdfDirPdfW) * (
-                aoState.dVM * Mis(bsdfRevPdfW) +
-                aoState.dVCM * mMisVcWeightFactor + 1.f);
-
-            aoState.dVCM = Mis(1.f / bsdfDirPdfW);
-
-            aoState.mSpecularPath &= 0;
-        }
-
+            aoState.dVC = Mis(cosThetaOut / bsdfDirPdfW) * ( // vmarz: dVC = (g_i-1 / pi) * (etaVCM + dVCM_i-1 + _p_ro_i-2 * dVC_i-1)
+                aoState.dVC * Mis(bsdfRevPdfW) +             //        cosThetaOut part of g_i-1  [ _g reverse pdf conversion!, uses outgoing cosTheta]
+                aoState.dVCM + mMisVmWeightFactor);          //          !! sqr(dist) terms for _g_i-1 and gi of pi are the same and cancel out, hence NOT scaled after tracing]
+                                                             //        pi = bsdfDirPdfW * g1
+            aoState.dVM = Mis(cosThetaOut / bsdfDirPdfW) * ( //        bsdfDirPdfW = _p_ro_i    [part of pi]
+                aoState.dVM * Mis(bsdfRevPdfW) +             //        bsdfRevPdfW = _p_ro_i-2
+                aoState.dVCM * mMisVcWeightFactor + 1.f);    // 
+                                                             //        dVM = (g_i-1 / pi) * (1 + dVCM_i-1/etaVCM + _p_ro_i-2 * dVM_i-1)
+            aoState.dVCM = Mis(1.f / bsdfDirPdfW);           //        cosThetaOut part of g_i-1 [_g reverse pdf conversion!, uses outgoing cosTheta]
+                                                             //          !! sqr(dist) terms for _g_i-1 and gi of pi are the same and cancel out, hence NOT scaled after tracing]
+            aoState.mSpecularPath &= 0;                      //
+        }                                                    //        dVC = 1 / pi
+                                                             //        pi = bsdfDirPdfW * g1 = _p_ro_i * g1 [only for dVCM sqe(dist) terms do not cancel out and are added after tracing]
         aoState.mOrigin  = aHitPoint;
         aoState.mThroughput *= bsdfFactor * (cosThetaOut / bsdfDirPdfW);
         
