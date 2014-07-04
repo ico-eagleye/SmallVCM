@@ -145,7 +145,8 @@ uint g_SceneConfigs[] = {
     Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightSun,
     Scene::kGlossyFloor | Scene::kLargeMirrorSphere | Scene::kLightCeiling,
     Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightPoint,
-    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightBackground
+    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightBackground,
+    Scene::kStandardCornell | Scene::kLightCeiling
 };
 
 std::string DefaultFilename(

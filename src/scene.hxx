@@ -124,6 +124,7 @@ public:
         kSmallMirrorSphere = 64,
         kSmallGlassSphere  = 128,
         kGlossyFloor       = 256,
+        kStandardCornell   = 512,
         kBothSmallSpheres  = (kSmallMirrorSphere | kSmallGlassSphere),
         kBothLargeSpheres  = (kLargeMirrorSphere | kLargeGlassSphere),
         kDefault           = (kLightCeiling | kBothSmallSpheres),
@@ -146,7 +147,8 @@ public:
         bool light_point      = (aBoxMask & kLightPoint)      != 0;
         bool light_background = (aBoxMask & kLightBackground) != 0;
 
-        bool light_box = true;
+        //bool light_box = true;
+        bool light_box = (aBoxMask & kStandardCornell) != 0;
 
         // because it looks really weird with it
         if(light_point)
@@ -204,6 +206,22 @@ public:
         mat.mDiffuseReflectance = Vec3f(0.156863f, 0.172549f, 0.803922f);
         mMaterials.push_back(mat);
 
+        // Standard Cornell
+        // 9) diffuse white
+        mat.Reset();
+        mat.mDiffuseReflectance = Vec3f(0.8f, 0.8f, 0.8f);
+        mMaterials.push_back(mat);
+
+        // 10) diffuse green
+        mat.Reset();
+        mat.mDiffuseReflectance = Vec3f(0.05f, 0.8f, 0.05f);
+        mMaterials.push_back(mat);
+
+        // 11) diffuse red
+        mat.Reset();
+        mat.mDiffuseReflectance = Vec3f(1.f, 0.05f, 0.05f);
+        mMaterials.push_back(mat);
+
         delete mGeometry;
 
         //////////////////////////////////////////////////////////////////////////
@@ -222,45 +240,60 @@ public:
         GeometryList *geometryList = new GeometryList;
         mGeometry = geometryList;
 
-        if((aBoxMask & kGlossyFloor) != 0)
+        int matFloor = 5;
+        int matBackWall = 5;
+
+        if ((aBoxMask & kGlossyFloor) != 0)
         {
-            // Floor
-            geometryList->mGeometry.push_back(new Triangle(cb[0], cb[4], cb[5], 2));
-            geometryList->mGeometry.push_back(new Triangle(cb[5], cb[1], cb[0], 2));
-            // Back wall
-            geometryList->mGeometry.push_back(new Triangle(cb[0], cb[1], cb[2], 8));
-            geometryList->mGeometry.push_back(new Triangle(cb[2], cb[3], cb[0], 8));
+            matFloor = 2;
+            matBackWall = 8;
         }
-        else
+        else if ((aBoxMask & kStandardCornell) != 0)
         {
-            // Floor
-            geometryList->mGeometry.push_back(new Triangle(cb[0], cb[4], cb[5], 5));
-            geometryList->mGeometry.push_back(new Triangle(cb[5], cb[1], cb[0], 5));
-            // Back wall
-            geometryList->mGeometry.push_back(new Triangle(cb[0], cb[1], cb[2], 5));
-            geometryList->mGeometry.push_back(new Triangle(cb[2], cb[3], cb[0], 5));
+            matFloor = 9;
+            matBackWall = 9;
         }
+
+        // Floor
+        geometryList->mGeometry.push_back(new Triangle(cb[0], cb[4], cb[5], matFloor));
+        geometryList->mGeometry.push_back(new Triangle(cb[5], cb[1], cb[0], matFloor));
+        // Back wall
+        geometryList->mGeometry.push_back(new Triangle(cb[0], cb[1], cb[2], matFloor));
+        geometryList->mGeometry.push_back(new Triangle(cb[2], cb[3], cb[0], matFloor));
 
 
         // Ceiling
+        int matCeiling1 = 5;
+        int matCeiling2 = 5;
         if(light_ceiling && !light_box)
         {
-            geometryList->mGeometry.push_back(new Triangle(cb[2], cb[6], cb[7], 0));
-            geometryList->mGeometry.push_back(new Triangle(cb[7], cb[3], cb[2], 1));
+            matCeiling1 = 0;
+            matCeiling2 = 1;
         }
-        else
+        else if ((aBoxMask & kStandardCornell) != 0)
         {
-            geometryList->mGeometry.push_back(new Triangle(cb[2], cb[6], cb[7], 5));
-            geometryList->mGeometry.push_back(new Triangle(cb[7], cb[3], cb[2], 5));
+            matCeiling1 = 9;
+            matCeiling2 = 9;
         }
+
+        geometryList->mGeometry.push_back(new Triangle(cb[2], cb[6], cb[7], matCeiling1));
+        geometryList->mGeometry.push_back(new Triangle(cb[7], cb[3], cb[2], matCeiling2));
+
 
         // Left wall
-        geometryList->mGeometry.push_back(new Triangle(cb[3], cb[7], cb[4], 3));
-        geometryList->mGeometry.push_back(new Triangle(cb[4], cb[0], cb[3], 3));
+        int matLeftWall = 3;
+        if ((aBoxMask & kStandardCornell) != 0)
+            matLeftWall = 11;
+
+        geometryList->mGeometry.push_back(new Triangle(cb[3], cb[7], cb[4], matLeftWall));
+        geometryList->mGeometry.push_back(new Triangle(cb[4], cb[0], cb[3], matLeftWall));
 
         // Right wall
-        geometryList->mGeometry.push_back(new Triangle(cb[1], cb[5], cb[6], 4));
-        geometryList->mGeometry.push_back(new Triangle(cb[6], cb[2], cb[1], 4));
+        int matRighttWall = 4;
+        if ((aBoxMask & kStandardCornell) != 0)
+            matRighttWall = 10;
+        geometryList->mGeometry.push_back(new Triangle(cb[1], cb[5], cb[6], matRighttWall));
+        geometryList->mGeometry.push_back(new Triangle(cb[6], cb[2], cb[1], matRighttWall));
 
         // Ball - central
         float largeRadius = 0.8f;
