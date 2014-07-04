@@ -555,12 +555,16 @@ private:
             // The continuation probability is max component from reflectance.
             // That way the weight of sample will never rise.
             // Luminance is another very valid option.
+                // vmarz: weight will never rise in the process of scaling with reflection and dividing by component probability
             mContinuationProb =
                 (aMaterial.mDiffuseReflectance +
                 aMaterial.mPhongReflectance +
                 mReflectCoeff * aMaterial.mMirrorReflectance).Max() +
                 (1.f - mReflectCoeff); // vmarz: adds transmission possibility to path continuation probability
-
+                                       //        Why last term isn't (1.f - mReflectCoeff) * aMaterial.mMirrorReflectance
+                                       //           AlbedoRefract() also doen't get luminance of mMirrorReflectance as in other case,
+                                       //           it just checks IOR and return 1 or 0, so albedoRefract describes just possibility of
+                                       //           transmission
             mContinuationProb = std::min(1.f, std::max(0.f, mContinuationProb));
         }
     }

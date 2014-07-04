@@ -532,8 +532,9 @@ public:
                            cameraState.mPathLength > mMaxPathLength)
                             break;
 
-                        color += cameraState.mThroughput * lightVertex.mThroughput *
+                        Vec3f connectContrib = cameraState.mThroughput * lightVertex.mThroughput *
                             ConnectVertices(lightVertex, bsdf, hitPoint, cameraState);
+                        color += connectContrib;
                     }
                 }
 
@@ -556,6 +557,7 @@ public:
             }
 
             mFramebuffer.AddColor(screenSample, color);
+            int a = 1; // vmarz dummy to stay in scope
         }
 
         mIterations++;
@@ -603,8 +605,8 @@ private:
         // The solid angle ray pdf is then equal to the conversion factor from
         // image plane area density to ray solid angle density
         const float cameraPdfW = imageToSolidAngleFactor /* * areaPdf */; // vmarz: areaPdf = 1/area = 1/1 = 1
-                                                                          // cameraPdf is pi (
-        oCameraState.mOrigin       = primaryRay.org;                      // p0_connect = areaPdf = 1 
+                                                                          //        cameraPdf = areaPdf * p1 = p1_ro * g1 [g1 added after tracing]
+        oCameraState.mOrigin       = primaryRay.org;                      //        p0_connect = areaPdf = 1 
         oCameraState.mDirection    = primaryRay.dir;
         oCameraState.mThroughput   = Vec3f(1);
 
@@ -613,7 +615,7 @@ private:
 
         // Eye sub-path MIS quantities. Implements [tech. rep. (31)-(33)] partially.
         // The evaluation is completed after tracing the camera ray in the eye sub-path loop.
-        oCameraState.dVCM = Mis( /* p0_connect * */ mLightSubPathCount / cameraPdfW);
+        oCameraState.dVCM = Mis( /* p0_connect * */ mLightSubPathCount / cameraPdfW); // vmarz: dVCM = (p0connect/p0trace)*(nLightSamples/p1)
         oCameraState.dVC  = 0;
         oCameraState.dVM  = 0;
 
@@ -819,7 +821,10 @@ private:
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
 
-        const Vec3f contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor;
+        const Vec3f contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor; 
+        // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering
+        //        2) Should didive contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
+        //           In this case numVertices = numLightSubpathVertices and numConnect=numLightSubpathVertices, therefore cancel out ?
 
         if(contrib.IsZero() || mScene.Occluded(aCameraHitpoint, direction, distance))
             return Vec3f(0);
@@ -1020,7 +1025,7 @@ private:
             aoState.dVCM = Mis(1.f / bsdfDirPdfW);           //        cosThetaOut part of g_i-1 [_g reverse pdf conversion!, uses outgoing cosTheta]
                                                              //          !! sqr(dist) terms for _g_i-1 and gi of pi are the same and cancel out, hence NOT scaled after tracing]
             aoState.mSpecularPath &= 0;                      //
-        }                                                    //        dVC = 1 / pi
+        }                                                    //        dVCM = 1 / pi
                                                              //        pi = bsdfDirPdfW * g1 = _p_ro_i * g1 [only for dVCM sqe(dist) terms do not cancel out and are added after tracing]
         aoState.mOrigin  = aHitPoint;
         aoState.mThroughput *= bsdfFactor * (cosThetaOut / bsdfDirPdfW);

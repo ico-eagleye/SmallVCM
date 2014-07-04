@@ -62,12 +62,12 @@ public:
             Isect isect;
             isect.dist = 1e36f;
 
-			// vmarz: path throughput [PBR p.765,767]
+            // vmarz: path throughput [PBR p.765,767]
             Vec3f pathWeight(1.f);
             Vec3f color(0.f);
             uint  pathLength   = 1;
             bool  lastSpecular = true;
-			// vmarz: pdf of last path (before next event estimation, new path vertex), used for MIS
+            // vmarz: pdf of last path (before next event estimation, new path vertex), used for MIS
             float lastPdfW     = 1;
 
             for(;; ++pathLength)
@@ -118,14 +118,14 @@ public:
                     if(contrib.IsZero())
                         break;
 
-					// vmarz: misWeight of directly hit light
+                    // vmarz: misWeight of directly hit light
                     float misWeight = 1.f;
-					// vmarz: include full new path is first ray hit light or last hit was specular [PBR p.767 bottom]
+                    // vmarz: include full new path is first ray hit light or last hit was specular [PBR p.767 bottom]
                     if(pathLength > 1 && !lastSpecular)
                     {
                         const float directPdfW = PdfAtoW(directPdfA, isect.dist,
                             bsdf.CosThetaFix());
-						// vmarz: wights bsdf sampled lastPdfW by direct light sampling
+                        // vmarz: wights bsdf sampled lastPdfW by direct light sampling
                         misWeight = Mis2(lastPdfW, directPdfW * lightPickProb);
                     }
 
@@ -158,19 +158,19 @@ public:
 
                         if(!factor.IsZero())
                         {
-							// vmarz: MIS weight for direct lighting estimator
+                            // vmarz: MIS weight for direct lighting estimator
                             float weight = 1.f;
                             if(!light->IsDelta())
                             {
-								// vmarz: scaled by contProb to account for general path continuation probability
-								// for bsdf sampled paths (as used below in Russian roulette)
+                                // vmarz: scaled by contProb to account for general path continuation probability
+                                // for bsdf sampled paths (as used below in Russian roulette)
                                 const float contProb = bsdf.ContinuationProb();
                                 bsdfPdfW *= contProb;
-								// vmarz: wights directly sampled light pdf by pdf of hitpoint bsdf 
+                                // vmarz: wights directly sampled light pdf by pdf of hitpoint bsdf 
                                 weight = Mis2(directPdfW * lightPickProb, bsdfPdfW);
                             }
 
-							// vmarz: misW * (L * brdf * cosTheta) / (lightPdf)
+                            // vmarz: misW * (L * brdf * cosTheta) / (lightPdf)
                             Vec3f contrib = (weight * cosThetaOut / (lightPickProb * directPdfW)) *
                                 (radiance * factor);
 
@@ -209,7 +209,7 @@ public:
                         pdf *= contProb;
                     }
 
-					// vmarz: accumulated path throughput, for reference check PBR p.765,767
+                    // vmarz: accumulated path throughput, for reference check PBR p.765,767
                     pathWeight *= factor * (cosThetaOut / pdf);
                     // We offset ray origin instead of setting tmin due to numeric
                     // issues in ray-sphere intersection. The isect.dist has to be
