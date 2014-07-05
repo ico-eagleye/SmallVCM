@@ -24,7 +24,6 @@
 
 #ifndef __VERTEXCM_HXX__
 #define __VERTEXCM_HXX__
-
 #include <vector>
 #include <cmath>
 #include <cassert>
@@ -32,6 +31,8 @@
 #include "bsdf.hxx"
 #include "rng.hxx"
 #include "hashgrid.hxx"
+#include "debug.h"
+
 
 ////////////////////////////////////////////////////////////////////////////////
 // A NOTE ON PATH MIS WEIGHT EVALUATION
@@ -286,6 +287,7 @@ public:
 
     virtual void RunIteration(int aIteration)
     {
+        dbgPrintf("ITERATION: %d \n", aIteration);
         // While we have the same number of pixels (camera paths)
         // and light paths, we do keep them separate for clarity reasons
         const int resX = int(mScene.mCamera.mResolution.x);
@@ -301,7 +303,7 @@ public:
         radius = std::max(radius, 1e-7f);
         const float radiusSqr = Sqr(radius);
 
-        // Factor used to normalise vertex merging contribution.
+        // Factor used to normalize vertex merging contribution.
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
         // vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
@@ -311,6 +313,8 @@ public:
         const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount;
         mMisVmWeightFactor = mUseVM ? Mis(etaVCM)       : 0.f;
         mMisVcWeightFactor = mUseVC ? Mis(1.f / etaVCM) : 0.f;
+        //123456789012345//               //
+        dbgPrintf("         etaVCM % 14f misVcWeightFac % 14f \n", etaVCM, mMisVcWeightFactor);
 
         // Clear path ends, nothing ends anywhere
         mPathEnds.resize(pathCount);
@@ -325,8 +329,9 @@ public:
         //////////////////////////////////////////////////////////////////////////
         for(int pathIdx = 0; pathIdx < pathCount; pathIdx++)
         {
+            DBG_PRINTFI(&pathIdx, "LIGHT PASS: -----------------------------------------\n", aIteration);
             SubPathState lightState;
-            GenerateLightSample(lightState);
+            GenerateLightSample(lightState, &pathIdx);
 
             //////////////////////////////////////////////////////////////////////////
             // Trace light path
@@ -340,14 +345,27 @@ public:
                 Isect isect(1e36f);
 
                 if(!mScene.Intersect(ray, isect))
+                {
+                    DBG_PRINTFI(&pathIdx, "MISS \n", lightState.mPathLength);
                     break;
+                }
 
                 const Vec3f hitPoint = ray.org + ray.dir * isect.dist;
                 isect.dist += EPS_RAY;
+                DBG_PRINTFI(&pathIdx, "\nHIT-L %d \n", lightState.mPathLength);
+                DBG_PRINTFI(&pathIdx, "       hitPoint % 14f % 14f % 14f \n", hitPoint.x, hitPoint.y, hitPoint.z);
 
                 LightBSDF bsdf(ray, isect, mScene);
                 if(!bsdf.IsValid())
+                {
                     break;
+                    DBG_PRINTFI(&pathIdx, " Hit BSDF INVALID \n");
+                }
+
+                DBG_PRINTFI(&pathIdx, "   directionFix % 14f % 14f % 14f \n", bsdf.mLocalDirFix.x, bsdf.mLocalDirFix.y, bsdf.mLocalDirFix.z);
+                DBG_PRINTFI(&pathIdx, "Light Hit MIS update \n");
+                DBG_PRINTFI(&pathIdx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n", 
+                    lightState.dVC, lightState.dVM, lightState.dVCM);
 
                 // Update the MIS quantities before storing them at the vertex.
                 // These updates follow the initialization in GenerateLightSample() or
@@ -360,12 +378,16 @@ public:
                         lightState.dVCM *= Mis(Sqr(isect.dist)); 
                     // vmarz: from g in 1/p1 (or 1/pi)
                     //        for dVC and dVM sqr(dist) terms cancel out, see explanation in SampleScattering()
+                    DBG_PRINTFI(&pathIdx, "         U dVCM % 14f    *= sqrDist  % 14f \n", lightState.dVCM, Mis(Sqr(isect.dist)) );
 
                     // vmarz: from g in p1 (or 1/pi)
                     lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix())); // vmarz?: why abs here?
                     lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix())); // not really needed since bsdf initialization
                     lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix())); // rejects rays when abs(mLocalDirFix.z) < EPS_COSINE by not setting materialID and
                 }                                                         // causing bsdf.IsValid() to false which is checked few lines above for continuation
+                DBG_PRINTFI(&pathIdx, "   /cosThetaFix % 14f \n", bsdf.CosThetaFix() );
+                DBG_PRINTFI(&pathIdx, "          U dVC % 14f          U dVM % 14f         U dVCM % 14f \n", 
+                    lightState.dVC, lightState.dVM, lightState.dVCM);
 
                 // Store vertex, unless BSDF is purely specular, which prevents
                 // vertex connections and merging
@@ -394,10 +416,13 @@ public:
 
                 // Terminate if the path would become too long after scattering
                 if(lightState.mPathLength + 2 > mMaxPathLength) // vmarz?: why +2 ?
+                {
+                    DBG_PRINTFI(&pathIdx, "MAX PATH LENGTH %d \n", mMaxPathLength);
                     break;
+                }
 
                 // Continue random walk
-                if(!SampleScattering(bsdf, hitPoint, lightState))
+                if(!SampleScattering(bsdf, hitPoint, lightState, &pathIdx))
                     break;
             }
 
@@ -423,6 +448,7 @@ public:
         // Unless rendering with traditional light tracing
         for(int pathIdx = 0; (pathIdx < pathCount) && (!mLightTraceOnly); ++pathIdx)
         {
+            DBG_PRINTFI(&pathIdx, "\nCAMERA PASS -----------------------------------------\n");
             SubPathState cameraState;
             const Vec2f screenSample = GenerateCameraSample(pathIdx, cameraState);
             Vec3f color(0);
@@ -457,19 +483,32 @@ public:
 
                 const Vec3f hitPoint = ray.org + ray.dir * isect.dist;
                 isect.dist += EPS_RAY;
+                DBG_PRINTFI(&pathIdx, "\nHIT-C %d \n", cameraState.mPathLength);
+                DBG_PRINTFI(&pathIdx, "       hitPoint % 14f % 14f % 14f \n", hitPoint.x, hitPoint.y, hitPoint.z);
 
                 CameraBSDF bsdf(ray, isect, mScene);
                 if(!bsdf.IsValid())
+                {
+                    DBG_PRINTFI(&pathIdx, " Hit BSDF INVALID \n");
                     break;
+                }
 
+                DBG_PRINTFI(&pathIdx, "   directionFix % 14f % 14f % 14f \n", bsdf.mLocalDirFix.x, bsdf.mLocalDirFix.y, bsdf.mLocalDirFix.z);
+                DBG_PRINTFI(&pathIdx, "Camera Hit MIS update \n");
+                DBG_PRINTFI(&pathIdx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n", 
+                    cameraState.dVC, cameraState.dVM, cameraState.dVCM);
                 // Update the MIS quantities, following the initialization in
                 // GenerateLightSample() or SampleScattering(). Implement equations
                 // [tech. rep. (31)-(33)] or [tech. rep. (34)-(36)], respectively.
                 {
                     cameraState.dVCM *= Mis(Sqr(isect.dist));
+                    DBG_PRINTFI(&pathIdx, "         U dVCM % 14f    *= sqrDist  % 14f \n", cameraState.dVCM, Mis(Sqr(isect.dist)) );
                     cameraState.dVCM /= Mis(std::abs(bsdf.CosThetaFix()));
                     cameraState.dVC  /= Mis(std::abs(bsdf.CosThetaFix()));
                     cameraState.dVM  /= Mis(std::abs(bsdf.CosThetaFix()));
+                    DBG_PRINTFI(&pathIdx, "   /cosThetaFix % 14f \n", bsdf.CosThetaFix() );
+                    DBG_PRINTFI(&pathIdx, "          U dVC % 14f          U dVM % 14f         U dVCM % 14f \n", 
+                        cameraState.dVC, cameraState.dVM, cameraState.dVCM);
                 }
 
                 // Light source has been hit; terminate afterwards, since
@@ -489,7 +528,10 @@ public:
 
                 // Terminate if eye sub-path is too long for connections or merging
                 if(cameraState.mPathLength >= mMaxPathLength)
+                {
+                    DBG_PRINTFI(&pathIdx, "MAX PATH LENGTH %d \n", mMaxPathLength);
                     break;
+                }
 
                 ////////////////////////////////////////////////////////////////
                 // Vertex connection: Connect to a light source
@@ -512,7 +554,7 @@ public:
                     // be revisited.
                     
                     // vmarz?: doesn't it imply need to revisit MIS also if using Light Vertex Cache?
-                    // I guess just means need to be computed correclty, e.g. cases of delayed computation of some factors
+                    // I guess just means need to be computed correctly, e.g. cases of delayed computation of some factors
                     const Vec2i range(
                         (pathIdx == 0) ? 0 : mPathEnds[pathIdx-1],
                         mPathEnds[pathIdx]);
@@ -533,7 +575,7 @@ public:
                             break;
 
                         Vec3f connectContrib = cameraState.mThroughput * lightVertex.mThroughput *
-                            ConnectVertices(lightVertex, bsdf, hitPoint, cameraState);
+                            ConnectVertices(lightVertex, bsdf, hitPoint, cameraState, &pathIdx);
                         color += connectContrib;
                     }
                 }
@@ -579,8 +621,10 @@ private:
     // Generates new camera sample given a pixel index
     Vec2f GenerateCameraSample(
         const int    aPixelIndex,
-        SubPathState &oCameraState)
+        SubPathState &oCameraState,
+        const int    *idx = NULL)
     {
+        DBG_PRINTFI(idx, "GenerateCameraSample(): \n");
         const Camera &camera = mScene.mCamera;
         const int resX = int(camera.mResolution.x);
         const int resY = int(camera.mResolution.y);
@@ -618,6 +662,11 @@ private:
         oCameraState.dVCM = Mis( /* p0_connect * */ mLightSubPathCount / cameraPdfW); // vmarz: dVCM = (p0connect/p0trace)*(nLightSamples/p1)
         oCameraState.dVC  = 0;
         oCameraState.dVM  = 0;
+
+        DBG_PRINTFI(idx, "         origin % 14f % 14f % 14f \n", oCameraState.mOrigin.x, oCameraState.mOrigin.y, oCameraState.mOrigin.z);
+        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", oCameraState.mDirection.x, oCameraState.mDirection.y, oCameraState.mDirection.z);
+        DBG_PRINTFI(idx, "dVCM=subPathCnt % 14d / cameraPdfW % 14f \n", mLightSubPathCount, cameraPdfW);
+        DBG_PRINTFI(idx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n", oCameraState.dVC, oCameraState.dVM, oCameraState.dVCM);
 
         return sample;
     }
@@ -762,8 +811,10 @@ private:
         const LightVertex  &aLightVertex,
         const CameraBSDF   &aCameraBsdf,
         const Vec3f        &aCameraHitpoint,
-        const SubPathState &aCameraState) const
+        const SubPathState &aCameraState,
+        const int          *idx = NULL) const
     {
+        DBG_PRINTFI(idx, "\nConnectVertices(): \n");
         // Get the connection
         Vec3f direction   = aLightVertex.mHitpoint - aCameraHitpoint;
         const float dist2 = direction.LenSqr();
@@ -776,13 +827,23 @@ private:
             mScene, direction, cosCamera, &cameraBsdfDirPdfW,
             &cameraBsdfRevPdfW);
 
+        DBG_PRINTFI(idx, "  connect point % 14f % 14f % 14f        pathLen %d\n",
+            aLightVertex.mHitpoint.x, aLightVertex.mHitpoint.y, aLightVertex.mHitpoint.z, aLightVertex.mPathLength);
+        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", direction.x, direction.y, direction.z);
+        DBG_PRINTFI(idx, "cameraBsdfFactr % 14f % 14f % 14f \n", cameraBsdfFactor.x, cameraBsdfFactor.y, cameraBsdfFactor.z);
+        DBG_PRINTFI(idx, "      cosCamera % 14f camBsdfDirPdfW % 14f camBsdfRevPdfW % 14f \n", cosCamera, cameraBsdfDirPdfW, cameraBsdfRevPdfW);
+
         if(cameraBsdfFactor.IsZero())
+        {
+            DBG_PRINTFI(idx, "cameraBsdfFactor ZERO \n");
             return Vec3f(0);
+        }
 
         // Camera continuation probability (for Russian roulette)
         const float cameraCont = aCameraBsdf.ContinuationProb();
         cameraBsdfDirPdfW *= cameraCont;
         cameraBsdfRevPdfW *= cameraCont;
+        DBG_PRINTFI(idx, "                     RR scaled camBsdfDirPdfW % 14f camBsdfRevPdfW % 14f \n", cameraBsdfDirPdfW, cameraBsdfRevPdfW);
 
         // Evaluate BSDF at light vertex
         float cosLight, lightBsdfDirPdfW, lightBsdfRevPdfW;
@@ -790,44 +851,71 @@ private:
             mScene, -direction, cosLight, &lightBsdfDirPdfW,
             &lightBsdfRevPdfW);
 
+        DBG_PRINTFI(idx, "lightBsdfFactor % 14f % 14f % 14f \n", lightBsdfFactor.x, lightBsdfFactor.y, lightBsdfFactor.z);
+        DBG_PRINTFI(idx, "       cosLight % 14f lgtBsdfDirPdfW % 14f lgtBsdfRevPdfW % 14f \n", cosLight, lightBsdfDirPdfW, lightBsdfRevPdfW);
+
         if(lightBsdfFactor.IsZero())
+        {
+            DBG_PRINTFI(idx, "lightBsdfFactor ZERO \n");
             return Vec3f(0);
+        }
 
         // Light continuation probability (for Russian roulette)
         const float lightCont = aLightVertex.mBsdf.ContinuationProb();
         lightBsdfDirPdfW *= lightCont;
         lightBsdfRevPdfW *= lightCont;
+        DBG_PRINTFI(idx, "                     RR scaled lgtBsdfDirPdfW % 14f lgtBsdfRevPdfW % 14f \n", lightBsdfDirPdfW, lightBsdfRevPdfW);
 
         // Compute geometry term
         const float geometryTerm = cosLight * cosCamera / dist2;
+        DBG_PRINTFI(idx, "  geometryTerm % 14f \n", geometryTerm);
         if(geometryTerm < 0)
+        {
+            DBG_PRINTFI(idx, "geometryTerm < ZERO \n");
             return Vec3f(0);
+        }
 
         // Convert pdfs to area pdf
         const float cameraBsdfDirPdfA = PdfWtoA(cameraBsdfDirPdfW, distance, cosLight);
         const float lightBsdfDirPdfA  = PdfWtoA(lightBsdfDirPdfW,  distance, cosCamera);
+        DBG_PRINTFI(idx, " camBsdfDirPdfA = (camBsdfDirPdfW *       cosLight) / sqr (      distance) \n");
+        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14e) \n", cameraBsdfDirPdfA, cameraBsdfDirPdfW, distance, cosLight);
+        DBG_PRINTFI(idx, " lgtBsdfDirPdfA = (lgtBsdfDirPdfW *      cosCamera) / sqr (      distance) \n");
+        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14e) \n", lightBsdfDirPdfA, lightBsdfDirPdfW, distance, cosCamera);
 
         // Partial light sub-path MIS weight [tech. rep. (40)]
         const float wLight = Mis(cameraBsdfDirPdfA) * (
             mMisVmWeightFactor + aLightVertex.dVCM + aLightVertex.dVC * Mis(lightBsdfRevPdfW));
         // vmarz: lightBsdfRevPdfW is Reverse with respect to light path, e.g. in eye path progression 
-        // dirrection (note same arrow dirs in formula)
+        // direction (note same arrow dirs in formula)
         // note (40) and (41) uses light subpath Y and camera subpath z
+        DBG_PRINTFI(idx, "         wLight = camBsdfDirPdfA * (VmWeightFactor +     light.dVCM +      light.dVC * lgtBsdfRevPdfW) \n");
+        DBG_PRINTFI(idx, " % 14f = % 14f * (% 14f + % 14e + % 14e * % 14f) \n", 
+            wLight, cameraBsdfDirPdfA, mMisVmWeightFactor, aLightVertex.dVCM, aLightVertex.dVC, lightBsdfRevPdfW);
 
         // Partial eye sub-path MIS weight [tech. rep. (41)]
         const float wCamera = Mis(lightBsdfDirPdfA) * (
             mMisVmWeightFactor + aCameraState.dVCM + aCameraState.dVC * Mis(cameraBsdfRevPdfW));
+        DBG_PRINTFI(idx, "        wCamera = lgtBsdfDirPdfA * (VmWeightFactor +    camera.dVCM +     camera.dVC * camBsdfRevPdfW) \n");
+        DBG_PRINTFI(idx, " % 14f = % 14f * (% 14f + % 14e + % 14e * % 14f) \n", 
+            wLight, lightBsdfDirPdfA, mMisVmWeightFactor, aCameraState.dVCM, aCameraState.dVC, cameraBsdfRevPdfW);
 
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
 
         const Vec3f contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor; 
         // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering
-        //        2) Should didive contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
+        //        2) Should divide contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
         //           In this case numVertices = numLightSubpathVertices and numConnect=numLightSubpathVertices, therefore cancel out ?
+        DBG_PRINTFI(idx, "      misWeight % 14f \n", misWeight);
+        DBG_PRINTFI(idx, "        contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
+        DBG_PRINTFI(idx, "        contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor\n");
 
         if(contrib.IsZero() || mScene.Occluded(aCameraHitpoint, direction, distance))
+        {
+            DBG_PRINTFI(idx, "OCCLUDED \n");
             return Vec3f(0);
+        }
 
         return contrib;
     }
@@ -837,8 +925,9 @@ private:
     //////////////////////////////////////////////////////////////////////////
 
     // Samples light emission
-    void GenerateLightSample(SubPathState &oLightState)
+    void GenerateLightSample(SubPathState &oLightState, int *idx = NULL)
     {
+        DBG_PRINTFI(idx, "GenerateLightSample(): \n");
         // We sample lights uniformly
         const int   lightCount    = mScene.GetLightCount();
         const float lightPickProb = 1.f / lightCount;
@@ -854,9 +943,14 @@ private:
             oLightState.mOrigin, oLightState.mDirection,
             emissionPdfW, &directPdfW, &cosLight);
         // vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
+        DBG_PRINTFI(idx, "         origin % 14f % 14f % 14f \n", oLightState.mOrigin.x, oLightState.mOrigin.y, oLightState.mOrigin.z);
+        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", oLightState.mDirection.x, oLightState.mDirection.y, oLightState.mDirection.z);
+        DBG_PRINTFI(idx, "       emission % 14f % 14f % 14f \n", oLightState.mThroughput.x, oLightState.mThroughput.y, oLightState.mThroughput.z);
+        DBG_PRINTFI(idx, "       cosLight % 14f   emissionPdfW % 14f     directPdfW % 14f \n", cosLight, emissionPdfW, directPdfW);
 
         emissionPdfW *= lightPickProb;
         directPdfW   *= lightPickProb;
+        DBG_PRINTFI(idx, "       scaled w light pic prob - emissionPdfW % 14f   U directPdfW % 14f \n", emissionPdfW, directPdfW);
 
         oLightState.mThroughput    /= emissionPdfW;
         oLightState.mPathLength    = 1;
@@ -883,6 +977,9 @@ private:
             // vmarz: dVM_1 = dVC_1 / etaVCM
             //        [sqr(dist) from _g0 added after tracing]
         }
+        
+        DBG_PRINTFI(idx, "     throughput % 14f % 14f % 14f \n", oLightState.mThroughput.x, oLightState.mThroughput.y, oLightState.mThroughput.z);
+        DBG_PRINTFI(idx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n", oLightState.dVC, oLightState.dVM, oLightState.dVCM);
     }
 
     // Computes contribution of light sample to camera by splatting is onto the
@@ -966,8 +1063,11 @@ private:
     bool SampleScattering(
         const BSDF<tLightSample> &aBsdf,
         const Vec3f              &aHitPoint,
-        SubPathState             &aoState)
+        SubPathState             &aoState,
+        int                      *idx = NULL)
     {
+        DBG_PRINTFI(idx, "SampleScattering(): \n");
+
         // x,y for direction, z for component. No rescaling happens
         Vec3f rndTriplet  = mRng.GetVec3f();
         float bsdfDirPdfW, cosThetaOut;
@@ -976,8 +1076,15 @@ private:
         Vec3f bsdfFactor = aBsdf.Sample(mScene, rndTriplet, aoState.mDirection,
             bsdfDirPdfW, cosThetaOut, &sampledEvent);
 
+        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", aoState.mDirection.x, aoState.mDirection.y, aoState.mDirection.z);
+        DBG_PRINTFI(idx, "     bsdfFactor % 14f % 14f % 14f \n", bsdfFactor.x, bsdfFactor.y, bsdfFactor.z);
+        DBG_PRINTFI(idx, "    cosThetaOut % 14f \n", cosThetaOut);
+
         if(bsdfFactor.IsZero())
+        {
             return false;
+            DBG_PRINTFI(idx, "bsdfFactor Zero \n");
+        }
 
         // If we sampled specular event, then the reverse probability
         // cannot be evaluated, but we know it is exactly the same as
@@ -989,16 +1096,24 @@ private:
 
         // Russian roulette
         const float contProb = aBsdf.ContinuationProb();
-        if(mRng.GetFloat() > contProb)
+        const float rrSample = mRng.GetFloat();
+        DBG_PRINTFI(idx, "       contProb % 14f             RR % 14f \n", contProb, rrSample);
+        if(rrSample > contProb)
+        {
+            DBG_PRINTFI(idx, "RR STOP \n");
             return false;
+        }
 
+        DBG_PRINTFI(idx, "    bsdfDirPdfW % 14f    bsdfRevPdfW % 14f \n", bsdfDirPdfW, bsdfRevPdfW);
         bsdfDirPdfW *= contProb;
         bsdfRevPdfW *= contProb;
 
+        DBG_PRINTFI(idx, "  U bsdfDirPdfW % 14f  U bsdfRevPdfW % 14f\n", bsdfDirPdfW, bsdfRevPdfW);
+        DBG_PRINTFI(idx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n",
+            aoState.dVC, aoState.dVM, aoState.dVCM);
         // Sub-path MIS quantities for the next vertex. Only partial - the
         // evaluation is completed when the actual hit point is known,
         // i.e. after tracing the ray, in the sub-path loop.
-
         if(sampledEvent & LightBSDF::kSpecular)
         {
             // Specular scattering case [tech. rep. (53)-(55)] (partially, as noted above)
@@ -1029,7 +1144,18 @@ private:
                                                              //        pi = bsdfDirPdfW * g1 = _p_ro_i * g1 [only for dVCM sqe(dist) terms do not cancel out and are added after tracing]
         aoState.mOrigin  = aHitPoint;
         aoState.mThroughput *= bsdfFactor * (cosThetaOut / bsdfDirPdfW);
-        
+
+        DBG_PRINTFI(idx, "     throughput % 14f = bsdfFactor * (cosThetaOut / bsdfDirPdfW) \n", aoState.mThroughput.x, aoState.mThroughput.y, aoState.mThroughput.z);
+        DBG_PRINTFI(idx, "          U dVC = (   cosThetaOut /    bsdfDirPdfW) * (           dVC *    bsdfRevPdfW +           dVCM + VmWeightFactor) \n");
+        DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f) \n", 
+            aoState.dVC, cosThetaOut, bsdfDirPdfW, aoState.dVC, bsdfRevPdfW, aoState.dVCM, mMisVmWeightFactor);
+
+        DBG_PRINTFI(idx, "          U dVM = (   cosThetaOut /    bsdfDirPdfW) * (           dVM *    bsdfRevPdfW +           dVCM + VcWeightFactor + 1) \n");
+        DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f + 1) \n", 
+            aoState.dVM, cosThetaOut, bsdfDirPdfW, aoState.dVM, bsdfRevPdfW, aoState.dVCM, mMisVcWeightFactor);
+        DBG_PRINTFI(idx, "         U dVCM = (1 /    bsdfDirPdfW) \n");
+        DBG_PRINTFI(idx, " % 14f = (1 / %14f) \n",  aoState.dVCM, bsdfDirPdfW);
+        DBG_PRINTFI(idx, "          U dVC % 14f          U dVM % 14f         U dVCM % 14f \n", aoState.dVC, aoState.dVM, aoState.dVCM);
         return true;
     }
 

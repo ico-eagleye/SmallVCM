@@ -261,6 +261,7 @@ public:
     bool  IsDelta() const           { return mIsDelta;                     }
     float ContinuationProb() const  { return mContinuationProb;            }
     float CosThetaFix() const       { return mLocalDirFix.z;               }
+    Vec3f LocalDirFix() const       { return mLocalDirFix;                 }
     Vec3f WorldDirFix() const       { return mFrame.ToWorld(mLocalDirFix); }
 
 private:
@@ -570,6 +571,7 @@ private:
     }
 
 private:
+public:
     int   mMaterialID;       //!< Id of scene material, < 0 ~ invalid
     Frame mFrame;            //!< Local frame of reference
     Vec3f mLocalDirFix;      //!< Incoming (fixed) direction, in local

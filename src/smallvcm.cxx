@@ -209,7 +209,7 @@ void FullReport(const Config &aConfig)
         for(uint algID = 0; algID < (uint)Config::kAlgorithmMax; algID++)
         {
             config.mAlgorithm = Config::Algorithm(algID);
-            printf("Running %s... ", config.GetName(config.mAlgorithm));
+            printf("Running %s... \n", config.GetName(config.mAlgorithm));
             fflush(stdout);
             float time = render(config, &numIterations);
             printf("done in %.2f s\n", time);
@@ -288,7 +288,7 @@ int main(int argc, const char *argv[])
         printf("Target:  %d iteration(s)\n", config.mIterations);
 
     // Renders the image
-    printf("Running: %s... ", config.GetName(config.mAlgorithm));
+    printf("Running: %s... \n", config.GetName(config.mAlgorithm));
     fflush(stdout);
     float time = render(config);
     printf("done in %.2f s\n", time);

@@ -89,6 +89,7 @@
   <ItemGroup>
     <ClInclude Include="src\bsdf.hxx" />
     <ClInclude Include="src\config.hxx" />
+    <ClInclude Include="src\debug.h" />
     <ClInclude Include="src\frame.hxx" />
     <ClInclude Include="src\hashgrid.hxx" />
     <ClInclude Include="src\html_writer.hxx" />
