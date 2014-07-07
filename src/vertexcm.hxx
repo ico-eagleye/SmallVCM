@@ -287,7 +287,8 @@ public:
 
     virtual void RunIteration(int aIteration)
     {
-        dbgPrintf("ITERATION: %d \n", aIteration);
+        if (DEBUG_THREAD_ID == omp_get_thread_num())
+            dbgPrintf("\n\n\nITERATION: %d ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++ \n", aIteration);
         // While we have the same number of pixels (camera paths)
         // and light paths, we do keep them separate for clarity reasons
         const int resX = int(mScene.mCamera.mResolution.x);
@@ -310,11 +311,11 @@ public:
         // vmarz?: why mLightSubPathCount? because of N_vm in [tech. rep. (11)]
 
         // MIS weight constant [tech. rep. (20)], with n_VC = 1 and n_VM = mLightPathCount
-        const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount;
+        const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount; // / n_VC =1 ;
         mMisVmWeightFactor = mUseVM ? Mis(etaVCM)       : 0.f;
         mMisVcWeightFactor = mUseVC ? Mis(1.f / etaVCM) : 0.f;
-        //123456789012345//               //
-        dbgPrintf("         etaVCM % 14f misVcWeightFac % 14f \n", etaVCM, mMisVcWeightFactor);
+        if (DEBUG_THREAD_ID == omp_get_thread_num())
+            dbgPrintf("         etaVCM % 14f misVcWeightFac % 14f         radius % 14f\n", etaVCM, mMisVcWeightFactor, radius);
 
         // Clear path ends, nothing ends anywhere
         mPathEnds.resize(pathCount);
@@ -329,7 +330,7 @@ public:
         //////////////////////////////////////////////////////////////////////////
         for(int pathIdx = 0; pathIdx < pathCount; pathIdx++)
         {
-            DBG_PRINTFI(&pathIdx, "LIGHT PASS: -----------------------------------------\n", aIteration);
+            DBG_PRINTFI(&pathIdx, "\n\nLIGHT PASS: %d ----------------------------------------------------------------------------------\n", aIteration);
             SubPathState lightState;
             GenerateLightSample(lightState, &pathIdx);
 
@@ -352,7 +353,7 @@ public:
 
                 const Vec3f hitPoint = ray.org + ray.dir * isect.dist;
                 isect.dist += EPS_RAY;
-                DBG_PRINTFI(&pathIdx, "\nHIT-L %d \n", lightState.mPathLength);
+                DBG_PRINTFI(&pathIdx, "\nHIT-L %d - %d\n", aIteration, lightState.mPathLength);
                 DBG_PRINTFI(&pathIdx, "       hitPoint % 14f % 14f % 14f \n", hitPoint.x, hitPoint.y, hitPoint.z);
 
                 LightBSDF bsdf(ray, isect, mScene);
@@ -448,7 +449,7 @@ public:
         // Unless rendering with traditional light tracing
         for(int pathIdx = 0; (pathIdx < pathCount) && (!mLightTraceOnly); ++pathIdx)
         {
-            DBG_PRINTFI(&pathIdx, "\nCAMERA PASS -----------------------------------------\n");
+            DBG_PRINTFI(&pathIdx, "\n\nCAMERA PASS: %d ----------------------------------------------------------------------------------\n");
             SubPathState cameraState;
             const Vec2f screenSample = GenerateCameraSample(pathIdx, cameraState);
             Vec3f color(0);
@@ -483,7 +484,7 @@ public:
 
                 const Vec3f hitPoint = ray.org + ray.dir * isect.dist;
                 isect.dist += EPS_RAY;
-                DBG_PRINTFI(&pathIdx, "\nHIT-C %d \n", cameraState.mPathLength);
+                DBG_PRINTFI(&pathIdx, "\nHIT-C %d - %d \n", aIteration, cameraState.mPathLength);
                 DBG_PRINTFI(&pathIdx, "       hitPoint % 14f % 14f % 14f \n", hitPoint.x, hitPoint.y, hitPoint.z);
 
                 CameraBSDF bsdf(ray, isect, mScene);
@@ -576,6 +577,9 @@ public:
 
                         Vec3f connectContrib = cameraState.mThroughput * lightVertex.mThroughput *
                             ConnectVertices(lightVertex, bsdf, hitPoint, cameraState, &pathIdx);
+                        DBG_PRINTFI(&pathIdx, "contri*througput % 14f % 14f % 14f \n", connectContrib.x, connectContrib.y, connectContrib.z);
+                        DBG_PRINTFI(&pathIdx, "camera.Throughpt % 14f % 14f % 14f \n", cameraState.mThroughput.x, cameraState.mThroughput.y, cameraState.mThroughput.z);
+                        DBG_PRINTFI(&pathIdx, "vertex.Throughpt % 14f % 14f % 14f \n", lightVertex.mThroughput.x, lightVertex.mThroughput.y, lightVertex.mThroughput.z);
                         color += connectContrib;
                     }
                 }
@@ -829,7 +833,7 @@ private:
 
         DBG_PRINTFI(idx, "  connect point % 14f % 14f % 14f        pathLen %d\n",
             aLightVertex.mHitpoint.x, aLightVertex.mHitpoint.y, aLightVertex.mHitpoint.z, aLightVertex.mPathLength);
-        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", direction.x, direction.y, direction.z);
+        DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f      distance % 14f \n", direction.x, direction.y, direction.z, distance);
         DBG_PRINTFI(idx, "cameraBsdfFactr % 14f % 14f % 14f \n", cameraBsdfFactor.x, cameraBsdfFactor.y, cameraBsdfFactor.z);
         DBG_PRINTFI(idx, "      cosCamera % 14f camBsdfDirPdfW % 14f camBsdfRevPdfW % 14f \n", cosCamera, cameraBsdfDirPdfW, cameraBsdfRevPdfW);
 
@@ -879,9 +883,9 @@ private:
         const float cameraBsdfDirPdfA = PdfWtoA(cameraBsdfDirPdfW, distance, cosLight);
         const float lightBsdfDirPdfA  = PdfWtoA(lightBsdfDirPdfW,  distance, cosCamera);
         DBG_PRINTFI(idx, " camBsdfDirPdfA = (camBsdfDirPdfW *       cosLight) / sqr (      distance) \n");
-        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14e) \n", cameraBsdfDirPdfA, cameraBsdfDirPdfW, distance, cosLight);
+        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14f) \n", cameraBsdfDirPdfA, cameraBsdfDirPdfW, cosLight, distance);
         DBG_PRINTFI(idx, " lgtBsdfDirPdfA = (lgtBsdfDirPdfW *      cosCamera) / sqr (      distance) \n");
-        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14e) \n", lightBsdfDirPdfA, lightBsdfDirPdfW, distance, cosCamera);
+        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f) / sqr (% 14f) \n", lightBsdfDirPdfA, lightBsdfDirPdfW, cosCamera, distance);
 
         // Partial light sub-path MIS weight [tech. rep. (40)]
         const float wLight = Mis(cameraBsdfDirPdfA) * (
@@ -903,13 +907,15 @@ private:
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
 
-        const Vec3f contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor; 
+        Vec3f contrib = misWeight * geometryTerm * cameraBsdfFactor * lightBsdfFactor; 
         // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering
         //        2) Should divide contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
         //           In this case numVertices = numLightSubpathVertices and numConnect=numLightSubpathVertices, therefore cancel out ?
         DBG_PRINTFI(idx, "      misWeight % 14f \n", misWeight);
-        DBG_PRINTFI(idx, "        contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
-        DBG_PRINTFI(idx, "        contrib = (misWeight * geometryTerm) * cameraBsdfFactor * lightBsdfFactor\n");
+        DBG_PRINTFI(idx, "unweigh contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
+        DBG_PRINTFI(idx, "unweigh contrib = geometryTerm * cameraBsdfFactor * lightBsdfFactor\n");
+        contrib *= misWeight;
+        DBG_PRINTFI(idx, " weight contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
 
         if(contrib.IsZero() || mScene.Occluded(aCameraHitpoint, direction, distance))
         {
@@ -1111,6 +1117,11 @@ private:
         DBG_PRINTFI(idx, "  U bsdfDirPdfW % 14f  U bsdfRevPdfW % 14f\n", bsdfDirPdfW, bsdfRevPdfW);
         DBG_PRINTFI(idx, "            dVC % 14f            dVM % 14f           dVCM % 14f \n",
             aoState.dVC, aoState.dVM, aoState.dVCM);
+
+        const float dVC = aoState.dVC;
+        const float dVM = aoState.dVM;
+        const float dVCM = aoState.dVCM;
+
         // Sub-path MIS quantities for the next vertex. Only partial - the
         // evaluation is completed when the actual hit point is known,
         // i.e. after tracing the ray, in the sub-path loop.
@@ -1148,13 +1159,13 @@ private:
         DBG_PRINTFI(idx, "     throughput % 14f = bsdfFactor * (cosThetaOut / bsdfDirPdfW) \n", aoState.mThroughput.x, aoState.mThroughput.y, aoState.mThroughput.z);
         DBG_PRINTFI(idx, "          U dVC = (   cosThetaOut /    bsdfDirPdfW) * (           dVC *    bsdfRevPdfW +           dVCM + VmWeightFactor) \n");
         DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f) \n", 
-            aoState.dVC, cosThetaOut, bsdfDirPdfW, aoState.dVC, bsdfRevPdfW, aoState.dVCM, mMisVmWeightFactor);
+            aoState.dVC, cosThetaOut, bsdfDirPdfW, dVC, bsdfRevPdfW, aoState.dVCM, mMisVmWeightFactor);
 
         DBG_PRINTFI(idx, "          U dVM = (   cosThetaOut /    bsdfDirPdfW) * (           dVM *    bsdfRevPdfW +           dVCM + VcWeightFactor + 1) \n");
         DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f + 1) \n", 
-            aoState.dVM, cosThetaOut, bsdfDirPdfW, aoState.dVM, bsdfRevPdfW, aoState.dVCM, mMisVcWeightFactor);
+            aoState.dVM, cosThetaOut, bsdfDirPdfW, dVM, bsdfRevPdfW, aoState.dVCM, mMisVcWeightFactor);
         DBG_PRINTFI(idx, "         U dVCM = (1 /    bsdfDirPdfW) \n");
-        DBG_PRINTFI(idx, " % 14f = (1 / %14f) \n",  aoState.dVCM, bsdfDirPdfW);
+        DBG_PRINTFI(idx, " % 14f = (1 / %14f) \n",  dVCM, bsdfDirPdfW);
         DBG_PRINTFI(idx, "          U dVC % 14f          U dVM % 14f         U dVCM % 14f \n", aoState.dVC, aoState.dVM, aoState.dVCM);
         return true;
     }
