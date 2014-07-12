@@ -34,6 +34,11 @@
 #include "debug.h"
 
 
+#define CONNECT_VERTICES 0
+#define CONNECT_CAMERA 0
+#define CONNECT_LIGHTS0 0 // getRadiance
+#define CONNECT_LIGHTS1 1 // illuminate
+
 ////////////////////////////////////////////////////////////////////////////////
 // A NOTE ON PATH MIS WEIGHT EVALUATION
 ////////////////////////////////////////////////////////////////////////////////
@@ -409,12 +414,13 @@ public:
 
                 // vmarz: mandatory?
                 // Connect to camera, unless BSDF is purely specular
+#if CONNECT_CAMERA
                 if(!bsdf.IsDelta() && (mUseVC || mLightTraceOnly))
                 {
                     if(lightState.mPathLength + 1 >= mMinPathLength)
                         ConnectToCamera(lightState, hitPoint, bsdf);
                 }
-
+#endif
                 // Terminate if the path would become too long after scattering
                 if(lightState.mPathLength + 2 > mMaxPathLength) // vmarz?: why +2 ?
                 {
@@ -473,9 +479,9 @@ public:
                     {
                         if(cameraState.mPathLength >= mMinPathLength)
                         {
-                            color += cameraState.mThroughput *
-                                GetLightRadiance(mScene.GetBackground(), cameraState,
+                            Vec3f contrib = cameraState.mThroughput * GetLightRadiance(mScene.GetBackground(), cameraState,
                                 Vec3f(0), ray.dir);
+                            color += contrib;
                         }
                     }
 
@@ -512,6 +518,7 @@ public:
                         cameraState.dVC, cameraState.dVM, cameraState.dVCM);
                 }
 
+#if CONNECT_LIGHTS0
                 // Light source has been hit; terminate afterwards, since
                 // our light sources do not have reflective properties
                 if(isect.lightID >= 0)
@@ -526,6 +533,7 @@ public:
                     
                     break;
                 }
+#endif
 
                 // Terminate if eye sub-path is too long for connections or merging
                 if(cameraState.mPathLength >= mMaxPathLength)
@@ -534,6 +542,7 @@ public:
                     break;
                 }
 
+#if CONNECT_LIGHTS1
                 ////////////////////////////////////////////////////////////////
                 // Vertex connection: Connect to a light source
                 if(!bsdf.IsDelta() && mUseVC)
@@ -544,7 +553,9 @@ public:
                             DirectIllumination(cameraState, hitPoint, bsdf);
                     }
                 }
+#endif
 
+#if CONNECT_VERTICES
                 ////////////////////////////////////////////////////////////////
                 // Vertex connection: Connect to light vertices
                 if(!bsdf.IsDelta() && mUseVC)
@@ -583,6 +594,7 @@ public:
                         color += connectContrib;
                     }
                 }
+#endif
 
                 ////////////////////////////////////////////////////////////////
                 // Vertex merging: Merge with light vertices
@@ -713,7 +725,6 @@ private:
 
         directPdfA   *= lightPickProb; // vmarz: p0connect in tech. rep
         emissionPdfW *= lightPickProb; // vmarz: p0trace in tech. rep
-        // vmarz: A for area, W for solid angle ?
 
         // Partial eye sub-path MIS weight [tech. rep. (43)].
         // If the last hit was specular, then dVCM == 0.
@@ -798,7 +809,8 @@ private:
 
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
-
+        
+        // vmarz: radiance not scaled by cosAtLight, also not in Illuminate function
         const Vec3f contrib =
             (misWeight * cosToLight / (lightPickProb * directPdfW)) * (radiance * bsdfFactor);
 
@@ -1032,7 +1044,7 @@ private:
         // that the pixel area is one and thus the image plane sampling pdf is 1.
         // The area pdf of aHitpoint as sampled from the camera is then equal to
         // the conversion factor from image plane area density to surface area density
-        const float cameraPdfA = imageToSurfaceFactor;
+        const float cameraPdfA = imageToSurfaceFactor; // * 1.f 
 
         // Partial light sub-path weight [tech. rep. (46)]. Note the division by
         // mLightPathCount, which is the number of samples this technique uses.
@@ -1051,8 +1063,10 @@ private:
         // divided) pdf from surface area to image plane area, w.r.t. which the
         // pixel integral is actually defined. We also divide by the number of samples
         // this technique makes, which is equal to the number of light sub-paths
+        // vmarz: "to convert the (already divided) pdf from surface area.."
+        //         already divided where? throughput?
         const Vec3f contrib = misWeight * aLightState.mThroughput * bsdfFactor /
-            (mLightSubPathCount * surfaceToImageFactor);
+            (mLightSubPathCount * surfaceToImageFactor ) ;
 
         if(!contrib.IsZero())
         {
@@ -1155,6 +1169,10 @@ private:
                                                              //        pi = bsdfDirPdfW * g1 = _p_ro_i * g1 [only for dVCM sqe(dist) terms do not cancel out and are added after tracing]
         aoState.mOrigin  = aHitPoint;
         aoState.mThroughput *= bsdfFactor * (cosThetaOut / bsdfDirPdfW);
+        // vmarz: GEOMETRY TERM NOTE
+        //        cosAtHitPoint / sqr(dist) not known at this point until tracking, but still important to note they won't be actually used
+        //        since they cancel out due to division of sampled dir solid angle pdf by solid angle to area pdf conversion factor.
+        //        See PBR 765
 
         DBG_PRINTFI(idx, "     throughput % 14f = bsdfFactor * (cosThetaOut / bsdfDirPdfW) \n", aoState.mThroughput.x, aoState.mThroughput.y, aoState.mThroughput.z);
         DBG_PRINTFI(idx, "          U dVC = (   cosThetaOut /    bsdfDirPdfW) * (           dVC *    bsdfRevPdfW +           dVCM + VmWeightFactor) \n");

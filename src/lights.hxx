@@ -179,14 +179,14 @@ public:
 
 		Vec3f localDirOut = SampleCosHemisphereW(aDirRndTuple, &oEmissionPdfW);
 
-		oEmissionPdfW *= mInvArea;
+		oEmissionPdfW *= mInvArea; // p0_trace
 
 		// cannot really not emit the particle, so just bias it to the correct angle
 		localDirOut.z = std::max(localDirOut.z, EPS_COSINE);
 		oDirection      = mFrame.ToWorld(localDirOut);
 
 		if(oDirectPdfA)
-			*oDirectPdfA = mInvArea;
+			*oDirectPdfA = mInvArea; // p0_connect
 
 		if(oCosThetaLight)
 			*oCosThetaLight = localDirOut.z;

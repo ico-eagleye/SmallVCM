@@ -53,7 +53,8 @@ public:
         int x = int(aSample.x);
         int y = int(aSample.y);
 
-        mColor[x + y * mResX] = mColor[x + y * mResX] + aColor;
+        Vec3f dummy = mColor.at(0);
+        mColor[x + y * mResX] = mColor[x + y * mResX] + aColor + (0.f*dummy);
     }
 
     //////////////////////////////////////////////////////////////////////////
