@@ -34,9 +34,9 @@
 #include "debug.h"
 
 
-#define CONNECT_VERTICES 0
-#define CONNECT_CAMERA 0
-#define CONNECT_LIGHTS0 0 // getRadiance
+#define CONNECT_VERTICES 1
+#define CONNECT_CAMERA 1
+#define CONNECT_LIGHTS0 1 // getRadiance
 #define CONNECT_LIGHTS1 1 // illuminate
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -418,7 +418,7 @@ public:
                 if(!bsdf.IsDelta() && (mUseVC || mLightTraceOnly))
                 {
                     if(lightState.mPathLength + 1 >= mMinPathLength)
-                        ConnectToCamera(lightState, hitPoint, bsdf);
+                        ConnectToCamera(lightState, hitPoint, bsdf, &pathIdx);
                 }
 #endif
                 // Terminate if the path would become too long after scattering
@@ -549,8 +549,11 @@ public:
                 {
                     if(cameraState.mPathLength + 1>= mMinPathLength)
                     {
-                        color += cameraState.mThroughput *
-                            DirectIllumination(cameraState, hitPoint, bsdf);
+                        Vec3f contrib = cameraState.mThroughput *
+                            DirectIllumination(cameraState, hitPoint, bsdf, &pathIdx);
+                        DBG_PRINTFI(&pathIdx, "camera.Throughpt % 14f % 14f % 14f \n", cameraState.mThroughput.x, cameraState.mThroughput.y, cameraState.mThroughput.z);
+                        DBG_PRINTFI(&pathIdx, "contri*througput % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
+                        color += contrib;
                     }
                 }
 #endif
@@ -612,9 +615,15 @@ public:
 
                 if(!SampleScattering(bsdf, hitPoint, cameraState))
                     break;
+
+                //if (IS_DEBUG_IDX(&pathIdx))
+                //{
+                //    color = Vec3f(10000.f);
+                //}
             }
 
             mFramebuffer.AddColor(screenSample, color);
+
             int a = 1; // vmarz dummy to stay in scope
         }
 
@@ -745,8 +754,10 @@ private:
     Vec3f DirectIllumination(
         const SubPathState &aCameraState,
         const Vec3f        &aHitpoint,
-        const CameraBSDF   &aBsdf)
+        const CameraBSDF   &aBsdf,
+        const int          *idx = NULL)
     {
+        DBG_PRINTFI(idx, "\DirectIllumination(): \n");
         // We sample lights uniformly
         const int   lightCount    = mScene.GetLightCount();
         const float lightPickProb = 1.f / lightCount;
@@ -763,16 +774,35 @@ private:
             rndPosSamples, directionToLight, distance, directPdfW,
             &emissionPdfW, &cosAtLight);
 
+        if (IS_DEBUG_IDX(idx))
+        {
+            int a = 1;
+        }
+        
+        DBG_PRINTFI(idx, "       radiance % 14f % 14f % 14f \n", radiance.x, radiance.y, radiance.z);
+        DBG_PRINTFI(idx, "directionToLigt % 14f % 14f % 14f      distance % 14f \n", directionToLight.x, directionToLight.y, directionToLight.z, distance);
+
         // If radiance == 0, other values are undefined, so have to early exit
         if(radiance.IsZero())
+        {
+            DBG_PRINTFI(idx, "radiance ZERO \n");
             return Vec3f(0);
+        }
+
+        DBG_PRINTFI(idx, "     cosAtLight % 14f   emissionPdfW % 14f     directPdfW % 14f \n", cosAtLight, emissionPdfW, directPdfW);
 
         float bsdfDirPdfW, bsdfRevPdfW, cosToLight;
         const Vec3f bsdfFactor = aBsdf.Evaluate(mScene,
             directionToLight, cosToLight, &bsdfDirPdfW, &bsdfRevPdfW);
 
+        DBG_PRINTFI(idx, "     cosToLight % 14f \n", cosToLight);
+        DBG_PRINTFI(idx, "     bsdfFactor % 14f % 14f % 14f \n", bsdfFactor.x, bsdfFactor.y, bsdfFactor.z);
+
         if(bsdfFactor.IsZero())
+        {
+            DBG_PRINTFI(idx, "bsdfFactor ZERO \n");
             return Vec3f(0);
+        }
 
         const float continuationProbability = aBsdf.ContinuationProb();
         
@@ -788,6 +818,9 @@ private:
         // Therefore we can write wLight as a ratio of solid angle pdfs,
         // both expressed w.r.t. the same shading point.
         const float wLight = Mis(bsdfDirPdfW / (lightPickProb * directPdfW));
+
+        DBG_PRINTFI(idx, "         wLight =    bsdfDirPdfW / ( lightPickProb *     directPdfW )\n");
+        DBG_PRINTFI(idx, " % 14f = % 14f / (% 14f * % 14f ) \n", wLight, bsdfDirPdfW, lightPickProb, directPdfW);
 
         // Partial eye sub-path MIS weight [tech. rep. (45)].
         //
@@ -807,12 +840,24 @@ private:
         const float wCamera = Mis(emissionPdfW * cosToLight / (directPdfW * cosAtLight)) * (
             mMisVmWeightFactor + aCameraState.dVCM + aCameraState.dVC * Mis(bsdfRevPdfW));
 
+        DBG_PRINTFI(idx, "        wCamera = (  emissionPdfW *     cosToLight / (    directPdfW *     cosAtLight )) * ( vmWeightFactor +    camera.dVCM +     camera.dVC *    bsdfRevPdfW ) \n");
+        DBG_PRINTFI(idx, " % 14f = (% 14f * % 14f / (% 14f * % 14f)) * (% 14f + % 14f + % 14f + % 14f) \n",
+            wCamera, emissionPdfW, cosToLight, directPdfW, cosAtLight, mMisVmWeightFactor, aCameraState.dVCM, aCameraState.dVC, bsdfRevPdfW);
+
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
-        
+        DBG_PRINTFI(idx, "      misWeight % 14f \n", misWeight);
+
+
         // vmarz: radiance not scaled by cosAtLight, also not in Illuminate function
-        const Vec3f contrib =
-            (misWeight * cosToLight / (lightPickProb * directPdfW)) * (radiance * bsdfFactor);
+        Vec3f contrib = (cosToLight / (lightPickProb * directPdfW)) * (radiance * bsdfFactor);
+
+        DBG_PRINTFI(idx, "unweigh contrb % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
+        DBG_PRINTFI(idx, "unweigh contrb = (     cosToLight / ( lightPickProb *     directPdfW)) * (      radiance *     bsdfFactor ) \n");
+        DBG_PRINTFI(idx, "unweigh contrb = ( % 14f / (% 14f * % 14f )) * (% 14f * % 14f ) \n",
+            cosToLight, lightPickProb, directPdfW, radiance, bsdfFactor);
+        contrib *= misWeight;
+        DBG_PRINTFI(idx, " weight contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
 
         if(contrib.IsZero() || mScene.Occluded(aHitpoint, directionToLight, distance))
             return Vec3f(0);
@@ -1005,7 +1050,8 @@ private:
     void ConnectToCamera(
         const SubPathState &aLightState,
         const Vec3f        &aHitpoint,
-        const LightBSDF    &aBsdf)
+        const LightBSDF    &aBsdf,
+        int *idx = NULL )
     {
         const Camera &camera    = mScene.mCamera;
         Vec3f directionToCamera = camera.mPosition - aHitpoint;
@@ -1029,8 +1075,21 @@ private:
         const Vec3f bsdfFactor = aBsdf.Evaluate(mScene,
             directionToCamera, cosToCamera, &bsdfDirPdfW, &bsdfRevPdfW);
 
+        int dbgPixel  = ( DEBUG_PIX && IS_DEBUG_PIX(imagePos));
+        int dbgLaunch = (!DEBUG_PIX && IS_DEBUG_IDX(idx));
+        int dbgCond = dbgPixel || dbgLaunch;
+
+        DBG_PRINTFC(dbgCond, "ConnectToCamera():    debugPixel: %d  pixelPos %d %d   launchIdx x %u y %u \n",
+            dbgPixel, int(imagePos.x), int(imagePos.y), IDX_X(*idx), IDX_Y(*idx) );
+        DBG_PRINTFC(dbgCond, "    dirToCamera % 14f % 14f % 14f      distance % 14f \n", directionToCamera.x, directionToCamera.y, directionToCamera.z, distance);
+        DBG_PRINTFC(dbgCond, "     bsdfFactor % 14f % 14f % 14f \n", bsdfFactor.x, bsdfFactor.y, bsdfFactor.z);
+        DBG_PRINTFC(dbgCond, "    cosToCamera % 14f    bsdfDirPdfW % 14f    bsdfRevPdfW % 14f \n", cosToCamera, bsdfDirPdfW, bsdfRevPdfW);
+
         if(bsdfFactor.IsZero())
+        {
+            DBG_PRINTFC(dbgCond, "bsdfFactor ZERO \n ");
             return;
+        }
 
         bsdfRevPdfW *= aBsdf.ContinuationProb();
 
@@ -1040,17 +1099,28 @@ private:
         const float imageToSolidAngleFactor = Sqr(imagePointToCameraDist) / cosAtCamera;
         const float imageToSurfaceFactor = imageToSolidAngleFactor * std::abs(cosToCamera) / Sqr(distance);
 
+        DBG_PRINTFC(dbgCond, " imgToPtCamDist =  imagePlaneDist /    cosAtCamera) \n");
+        DBG_PRINTFC(dbgCond, " % 14f = % 14f  * % 14f \n", imagePointToCameraDist, camera.mImagePlaneDist, cosAtCamera);
+        DBG_PRINTFC(dbgCond, " imgToSolAngFac =  sqr(imgToPtCamDist) /    cosAtCamera) \n");
+        DBG_PRINTFC(dbgCond, " % 14f = sqr(% 14f) / % 14f \n", imageToSolidAngleFactor, imagePointToCameraDist, cosAtCamera);
+        DBG_PRINTFC(dbgCond, "  imgToSurfFact = imgSolAngleFac * abs(   cosToCamera)) / sqr(      distance) \n");
+        DBG_PRINTFC(dbgCond, " % 14f = % 14f * abs(% 14f) / sqr(% 14f) \n", imageToSurfaceFactor, imageToSolidAngleFactor, cosToCamera, distance);
+
         // We put the virtual image plane at such a distance from the camera origin
         // that the pixel area is one and thus the image plane sampling pdf is 1.
         // The area pdf of aHitpoint as sampled from the camera is then equal to
         // the conversion factor from image plane area density to surface area density
         const float cameraPdfA = imageToSurfaceFactor; // * 1.f 
+        DBG_PRINTFC(dbgCond, "    cameraPdfA % 14f \n", cameraPdfA);
 
         // Partial light sub-path weight [tech. rep. (46)]. Note the division by
         // mLightPathCount, which is the number of samples this technique uses.
         // This division also appears a few lines below in the framebuffer accumulation.
         const float wLight = Mis(cameraPdfA / mLightSubPathCount) * (
             mMisVmWeightFactor + aLightState.dVCM + aLightState.dVC * Mis(bsdfRevPdfW));
+        DBG_PRINTFC(dbgCond, "         wLight = (    cameraPdfA / lightPathCount) * (vmWeightFactor +     light.dVCM +      light.dVC *    bsdfRevPdfW) \n");
+        DBG_PRINTFC(dbgCond, " % 14f = (% 14f / % 14f) * (% 14f + % 14e + % 14e * % 14f) \n", 
+            wLight, cameraPdfA, mLightSubPathCount, mMisVmWeightFactor, aLightState.dVCM, aLightState.dVC, bsdfRevPdfW);
 
         // Partial eye sub-path weight is 0 [tech. rep. (47)]
 
@@ -1059,14 +1129,22 @@ private:
 
         const float surfaceToImageFactor = 1.f / imageToSurfaceFactor;
 
+        DBG_PRINTFC(dbgCond, "       misWeight % 14f         wLight % 14f\n", misWeight, wLight);
+        DBG_PRINTFC(dbgCond, "  srfToImgFactor % 14f 1/imgSurfFactr % 14f lghtPathCount % 14f \n",  surfaceToImageFactor, imageToSurfaceFactor, mLightSubPathCount);
+
         // We divide the contribution by surfaceToImageFactor to convert the (already
         // divided) pdf from surface area to image plane area, w.r.t. which the
         // pixel integral is actually defined. We also divide by the number of samples
         // this technique makes, which is equal to the number of light sub-paths
         // vmarz: "to convert the (already divided) pdf from surface area.."
         //         already divided where? throughput?
-        const Vec3f contrib = misWeight * aLightState.mThroughput * bsdfFactor /
+        Vec3f contrib =  aLightState.mThroughput * bsdfFactor /
             (mLightSubPathCount * surfaceToImageFactor ) ;
+        DBG_PRINTFC(dbgCond, " light.throughpt % 14f % 14f % 14f           depth % 14u \n", aLightState.mThroughput.x, aLightState.mThroughput.y, aLightState.mThroughput.z, aLightState.mPathLength)
+        DBG_PRINTFC(dbgCond, " unweigh contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
+        DBG_PRINTFC(dbgCond, " unweigh contrib = light.throughpt *     bsdfFactor / (lightPathCount * srfToImgFactor \n");
+        contrib *= misWeight;
+        DBG_PRINTFC(dbgCond, " weight contrib % 14f % 14f % 14f \n\n", contrib.x, contrib.y, contrib.z)
 
         if(!contrib.IsZero())
         {
