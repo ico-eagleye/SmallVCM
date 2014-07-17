@@ -327,7 +327,7 @@ public:
         memset(&mPathEnds[0], 0, mPathEnds.size() * sizeof(int));
 
         // Remove all light vertices and reserve space for some
-        mLightVertices.reserve(pathCount);
+        mLightVertices.reserve(10*pathCount);
         mLightVertices.clear();
 
         //////////////////////////////////////////////////////////////////////////
@@ -422,7 +422,7 @@ public:
                 }
 #endif
                 // Terminate if the path would become too long after scattering
-                if(lightState.mPathLength + 2 > mMaxPathLength) // vmarz?: why +2 ?
+                if(lightState.mPathLength + 2 > mMaxPathLength)
                 {
                     DBG_PRINTFI(&pathIdx, "MAX PATH LENGTH %d \n", mMaxPathLength);
                     break;
@@ -455,7 +455,7 @@ public:
         // Unless rendering with traditional light tracing
         for(int pathIdx = 0; (pathIdx < pathCount) && (!mLightTraceOnly); ++pathIdx)
         {
-            DBG_PRINTFI(&pathIdx, "\n\nCAMERA PASS: %d ----------------------------------------------------------------------------------\n");
+            DBG_PRINTFI(&pathIdx, "\n\nCAMERA PASS: %d ----------------------------------------------------------------------------------\n", aIteration);
             SubPathState cameraState;
             const Vec2f screenSample = GenerateCameraSample(pathIdx, cameraState);
             Vec3f color(0);
@@ -964,7 +964,7 @@ private:
         // Full path MIS weight [tech. rep. (37)]
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
 
-        Vec3f contrib = misWeight * geometryTerm * cameraBsdfFactor * lightBsdfFactor; 
+        Vec3f contrib = geometryTerm * cameraBsdfFactor * lightBsdfFactor; 
         // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering
         //        2) Should divide contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
         //           In this case numVertices = numLightSubpathVertices and numConnect=numLightSubpathVertices, therefore cancel out ?
@@ -1005,6 +1005,11 @@ private:
         oLightState.mThroughput = light->Emit(mScene.mSceneSphere, rndDirSamples, rndPosSamples,
             oLightState.mOrigin, oLightState.mDirection,
             emissionPdfW, &directPdfW, &cosLight);
+
+#if DEBUG_EMIT_DIR_FIXED
+        oLightState.mDirection = DEBUG_EMIT_DIR;
+#endif
+
         // vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
         DBG_PRINTFI(idx, "         origin % 14f % 14f % 14f \n", oLightState.mOrigin.x, oLightState.mOrigin.y, oLightState.mOrigin.z);
         DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", oLightState.mDirection.x, oLightState.mDirection.y, oLightState.mDirection.z);
@@ -1075,13 +1080,14 @@ private:
         const Vec3f bsdfFactor = aBsdf.Evaluate(mScene,
             directionToCamera, cosToCamera, &bsdfDirPdfW, &bsdfRevPdfW);
 
-        int dbgPixel  = ( DEBUG_PIX && IS_DEBUG_PIX(imagePos));
+        int dbgPixel  = ( DEBUG_PIX && IS_DEBUG_PIX(imagePos) && aLightState.mSpecularPath);
         int dbgLaunch = (!DEBUG_PIX && IS_DEBUG_IDX(idx));
         int dbgCond = dbgPixel || dbgLaunch;
 
         DBG_PRINTFC(dbgCond, "ConnectToCamera():    debugPixel: %d  pixelPos %d %d   launchIdx x %u y %u \n",
             dbgPixel, int(imagePos.x), int(imagePos.y), IDX_X(*idx), IDX_Y(*idx) );
-        DBG_PRINTFC(dbgCond, "    dirToCamera % 14f % 14f % 14f      distance % 14f \n", directionToCamera.x, directionToCamera.y, directionToCamera.z, distance);
+        DBG_PRINTFC(dbgCond, " dirToLight rev % 14f    specularPath %d \n", aBsdf.LocalDirFix().z, aLightState.mSpecularPath);
+        DBG_PRINTFC(dbgCond, "dirToCamera dir % 14f % 14f % 14f      distance % 14f \n", directionToCamera.x, directionToCamera.y, directionToCamera.z, distance);
         DBG_PRINTFC(dbgCond, "     bsdfFactor % 14f % 14f % 14f \n", bsdfFactor.x, bsdfFactor.y, bsdfFactor.z);
         DBG_PRINTFC(dbgCond, "    cosToCamera % 14f    bsdfDirPdfW % 14f    bsdfRevPdfW % 14f \n", cosToCamera, bsdfDirPdfW, bsdfRevPdfW);
 
@@ -1091,6 +1097,7 @@ private:
             return;
         }
 
+        DBG_PRINTFC(dbgCond, "mul bsdfRevPdfW % 14f  with contProb % 14f \n", bsdfRevPdfW, aBsdf.ContinuationProb());
         bsdfRevPdfW *= aBsdf.ContinuationProb();
 
         // Compute pdf conversion factor from image plane area to surface area
@@ -1145,7 +1152,7 @@ private:
         DBG_PRINTFC(dbgCond, " unweigh contrib = light.throughpt *     bsdfFactor / (lightPathCount * srfToImgFactor \n");
         contrib *= misWeight;
         DBG_PRINTFC(dbgCond, " weight contrib % 14f % 14f % 14f \n\n", contrib.x, contrib.y, contrib.z)
-
+        
         if(!contrib.IsZero())
         {
             if(mScene.Occluded(aHitpoint, directionToCamera, distance))
@@ -1172,7 +1179,7 @@ private:
         uint  sampledEvent;
 
         Vec3f bsdfFactor = aBsdf.Sample(mScene, rndTriplet, aoState.mDirection,
-            bsdfDirPdfW, cosThetaOut, &sampledEvent);
+            bsdfDirPdfW, cosThetaOut, &sampledEvent, idx);
 
         DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", aoState.mDirection.x, aoState.mDirection.y, aoState.mDirection.z);
         DBG_PRINTFI(idx, "     bsdfFactor % 14f % 14f % 14f \n", bsdfFactor.x, bsdfFactor.y, bsdfFactor.z);
@@ -1191,6 +1198,7 @@ private:
         float bsdfRevPdfW = bsdfDirPdfW;
         if((sampledEvent & LightBSDF::kSpecular) == 0)
             bsdfRevPdfW = aBsdf.Pdf(mScene, aoState.mDirection, true);
+        DBG_PRINTFI(idx, "   sampledEvent % d   specularPath %d \n", sampledEvent, aoState.mSpecularPath);
 
         // Russian roulette
         const float contProb = aBsdf.ContinuationProb();
@@ -1255,11 +1263,11 @@ private:
         DBG_PRINTFI(idx, "     throughput % 14f = bsdfFactor * (cosThetaOut / bsdfDirPdfW) \n", aoState.mThroughput.x, aoState.mThroughput.y, aoState.mThroughput.z);
         DBG_PRINTFI(idx, "          U dVC = (   cosThetaOut /    bsdfDirPdfW) * (           dVC *    bsdfRevPdfW +           dVCM + VmWeightFactor) \n");
         DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f) \n", 
-            aoState.dVC, cosThetaOut, bsdfDirPdfW, dVC, bsdfRevPdfW, aoState.dVCM, mMisVmWeightFactor);
+            aoState.dVC, cosThetaOut, bsdfDirPdfW, dVC, bsdfRevPdfW, dVCM, mMisVmWeightFactor);
 
         DBG_PRINTFI(idx, "          U dVM = (   cosThetaOut /    bsdfDirPdfW) * (           dVM *    bsdfRevPdfW +           dVCM + VcWeightFactor + 1) \n");
         DBG_PRINTFI(idx, " % 14f = (% 14f / % 14f) * (% 14e * % 14f + % 14e + % 14f + 1) \n", 
-            aoState.dVM, cosThetaOut, bsdfDirPdfW, dVM, bsdfRevPdfW, aoState.dVCM, mMisVcWeightFactor);
+            aoState.dVM, cosThetaOut, bsdfDirPdfW, dVM, bsdfRevPdfW, dVCM, mMisVcWeightFactor);
         DBG_PRINTFI(idx, "         U dVCM = (1 /    bsdfDirPdfW) \n");
         DBG_PRINTFI(idx, " % 14f = (1 / %14f) \n",  dVCM, bsdfDirPdfW);
         DBG_PRINTFI(idx, "          U dVC % 14f          U dVM % 14f         U dVCM % 14f \n", aoState.dVC, aoState.dVM, aoState.dVCM);

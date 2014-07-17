@@ -32,6 +32,7 @@
 #include "ray.hxx"
 #include "scene.hxx"
 #include "utils.hxx"
+#include "debug.h"
 
 //////////////////////////////////////////////////////////////////////////
 // BSDF, most magic happens here
@@ -194,7 +195,8 @@ public:
         Vec3f       &oWorldDirGen,
         float       &oPdfW,
         float       &oCosThetaGen,
-        uint        *oSampledEvent = NULL) const
+        uint        *oSampledEvent = NULL,
+        int         *idx = NULL) const
     {
         uint sampledEvent;
 
@@ -282,7 +284,14 @@ private:
             return Vec3f(0);
 
         float unweightedPdfW;
+#if DEBUG_SCATTER_MIRROR_REFLECT
+        oLocalDirGen.x = -mLocalDirFix.x;
+        oLocalDirGen.x = -mLocalDirFix.y;
+        oLocalDirGen.z = mLocalDirFix.z;
+        unweightedPdfW = mLocalDirFix.z * INV_PI_F;
+#else
         oLocalDirGen = SampleCosHemisphereW(aRndTuple, &unweightedPdfW);
+#endif
         oPdfW += unweightedPdfW * mProbabilities.diffProb;
 
         return aMaterial.mDiffuseReflectance * INV_PI_F;
@@ -329,6 +338,7 @@ private:
         oPdfW += mProbabilities.reflProb;
         // BSDF is multiplied (outside) by cosine (oLocalDirGen.z),
         // for mirror this shouldn't be done, so we pre-divide here instead
+        // vmarz: outside, that is when computing throughput
         return mReflectCoeff * aMaterial.mMirrorReflectance /
             std::abs(oLocalDirGen.z);
     }

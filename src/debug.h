@@ -3,22 +3,26 @@
 #include <stdio.h>
 
 #define DEBUG_OUTPUT 0
-#define DEBUG_X 161
-#define DEBUG_Y 352
+#define DEBUG_X 400
+#define DEBUG_Y 460
 #define DEBUG_RES_X 512
 #define DEBUG_RES_Y 512
 #define DEBUG_IDX DEBUG_X + (DEBUG_RES_Y - DEBUG_Y) * DEBUG_RES_X
 #define DEBUG_THREAD_ID 0
 
 #define DEBUG_PIX 1
-#define DEBUG_PIX_X 63
-#define DEBUG_PIX_Y 440
+#define DEBUG_PIX_X 400
+#define DEBUG_PIX_Y 460
+
+#define DEBUG_EMIT_DIR_FIXED 0
+#define DEBUG_EMIT_DIR Normalize(Vec3f(-0.5f, 0.f, -1.f))
+#define DEBUG_SCATTER_MIRROR_REFLECT 0
 
 
 #define IS_DEBUG_IDX(idx) (idx && (*idx == DEBUG_IDX))
-#define IS_DEBUG_PIX(pixelPos) (int(pixelPos.x) == DEBUG_PIX_X && int(pixelPos.y) == DEBUG_PIX_Y)
-#define IDX_X(idx) (idx / DEBUG_RES_X)
-#define IDX_Y(idx) (DEBUG_RES_Y - ((idx - (idx / DEBUG_RES_X)) / DEBUG_RES_X) )
+#define IS_DEBUG_PIX(pixelPos) (int(pixelPos.x) == DEBUG_PIX_X && int(pixelPos.y) == (DEBUG_RES_Y - DEBUG_PIX_Y))
+#define IDX_X(idx) (idx % DEBUG_RES_X)
+#define IDX_Y(idx) (DEBUG_RES_Y - (idx / DEBUG_RES_X))
 
 #if DEBUG_OUTPUT
 
