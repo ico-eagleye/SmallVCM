@@ -120,12 +120,18 @@ public:
 
                     // vmarz: misWeight of directly hit light
                     float misWeight = 1.f;
-                    // vmarz: include full new path is first ray hit light or last hit was specular [PBR p.767 bottom]
+                    // vmarz: add include full (unweighted) new path contrib if  the first ray hit light
+                    // or last hit was specular (since did not compute direct lightning at specular hit and
+                    // so not contribution yet from path of given length)
+                    // [PBR p.767 bottom]
+
+                    // otherwise compute misWeight
                     if(pathLength > 1 && !lastSpecular)
                     {
                         const float directPdfW = PdfAtoW(directPdfA, isect.dist,
                             bsdf.CosThetaFix());
-                        // vmarz: wights bsdf sampled lastPdfW by direct light sampling
+                        // vmarz: weights bsdf sampled lastPdfW against direct light sampling pdf,
+                        // e.g. other way how this path could have been sampled
                         misWeight = Mis2(lastPdfW, directPdfW * lightPickProb);
                     }
 
@@ -159,19 +165,21 @@ public:
                         if(!factor.IsZero())
                         {
                             // vmarz: MIS weight for direct lighting estimator
-                            float weight = 1.f;
+                            float misWeight = 1.f;
                             if(!light->IsDelta())
                             {
                                 // vmarz: scaled by contProb to account for general path continuation probability
                                 // for bsdf sampled paths (as used below in Russian roulette)
                                 const float contProb = bsdf.ContinuationProb();
                                 bsdfPdfW *= contProb;
-                                // vmarz: wights directly sampled light pdf by pdf of hitpoint bsdf 
-                                weight = Mis2(directPdfW * lightPickProb, bsdfPdfW);
+
+                                // vmarz: weights directly sampled light pdf against pdf of bsdf sampled 
+                                // direction, e.g. other way how this path could have been constructed
+                                misWeight = Mis2(directPdfW * lightPickProb, bsdfPdfW);
                             }
 
-                            // vmarz: misW * (L * brdf * cosTheta) / (lightPdf)
-                            Vec3f contrib = (weight * cosThetaOut / (lightPickProb * directPdfW)) *
+                            // vmarz: misW * (L * brdf * cosThetaOut) / (lightPdf)
+                            Vec3f contrib = (misWeight * cosThetaOut / (lightPickProb * directPdfW)) *
                                 (radiance * factor);
 
                             if(!mScene.Occluded(hitPoint, directionToLight, distance))
@@ -211,6 +219,7 @@ public:
 
                     // vmarz: accumulated path throughput, for reference check PBR p.765,767
                     pathWeight *= factor * (cosThetaOut / pdf);
+
                     // We offset ray origin instead of setting tmin due to numeric
                     // issues in ray-sphere intersection. The isect.dist has to be
                     // extended by this EPS_RAY after hitpoint is determined

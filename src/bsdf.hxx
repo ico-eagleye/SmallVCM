@@ -572,7 +572,7 @@ private:
                 aMaterial.mPhongReflectance +
                 mReflectCoeff * aMaterial.mMirrorReflectance).Max() +
                 (1.f - mReflectCoeff); // vmarz: adds transmission possibility to path continuation probability
-                                       //        Why last term isn't (1.f - mReflectCoeff) * aMaterial.mMirrorReflectance
+                                       //        Why last term isn't (1.f - mReflectCoeff) * aMaterial.mMirrorReflectance?
                                        //           AlbedoRefract() also doen't get luminance of mMirrorReflectance as in other case,
                                        //           it just checks IOR and return 1 or 0, so albedoRefract describes just possibility of
                                        //           transmission

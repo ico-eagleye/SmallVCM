@@ -156,13 +156,15 @@ class VertexCM : public AbstractRenderer
             // Even though this is pdf from camera BSDF, the continuation probability
             // must come from light BSDF, because that would govern it if light path
             // actually continued
-            cameraBsdfRevPdfW *= aLightVertex.mBsdf.ContinuationProb();		// vmarz!: review
+            cameraBsdfRevPdfW *= aLightVertex.mBsdf.ContinuationProb();
 
             // Partial light sub-path MIS weight [tech. rep. (38)]
             const float wLight = aLightVertex.dVCM * mVertexCM.mMisVcWeightFactor +
                 aLightVertex.dVM * mVertexCM.Mis(cameraBsdfDirPdfW);
             // vmarz?: why cameraDirPdf when formula has s-2, e.g. pdf of the vertex before merged vertex?
-            // because pdf is reverse in relation to light paht Y, e.g. it's pdf of (s-2)<-(s-1)<-(s)
+            //      A: because pdf is reverse in relation to light path Y, e.g. it's pdf for sampling (s-2)
+            //         as part of camera path is sampled as part of camera path (s-2) <- [(s-1)|(t-1)] <- (t-2) 
+            //         where [(s-1)|(t-1)] are points being merged
 
             // Partial eye sub-path MIS weight [tech. rep. (39)]
             const float wCamera = mCameraState.dVCM * mVertexCM.mMisVcWeightFactor +
@@ -313,7 +315,7 @@ public:
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
         // vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
-        // vmarz?: why mLightSubPathCount? because of N_vm in [tech. rep. (11)]
+        // vmarz: why mLightSubPathCount? because of N_vm in [tech. rep. (11)]
 
         // MIS weight constant [tech. rep. (20)], with n_VC = 1 and n_VM = mLightPathCount
         const float etaVCM = (PI_F * radiusSqr) * mLightSubPathCount; // / n_VC =1 ;
@@ -387,7 +389,7 @@ public:
                     DBG_PRINTFI(&pathIdx, "         U dVCM % 14f    *= sqrDist  % 14f \n", lightState.dVCM, Mis(Sqr(isect.dist)) );
 
                     // vmarz: from g in p1 (or 1/pi)
-                    lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix())); // vmarz?: why abs here?
+                    lightState.dVCM /= Mis(std::abs(bsdf.CosThetaFix())); // vmarz: why abs here?
                     lightState.dVC  /= Mis(std::abs(bsdf.CosThetaFix())); // not really needed since bsdf initialization
                     lightState.dVM  /= Mis(std::abs(bsdf.CosThetaFix())); // rejects rays when abs(mLocalDirFix.z) < EPS_COSINE by not setting materialID and
                 }                                                         // causing bsdf.IsValid() to false which is checked few lines above for continuation
@@ -412,7 +414,6 @@ public:
                     mLightVertices.push_back(lightVertex);
                 }
 
-                // vmarz: mandatory?
                 // Connect to camera, unless BSDF is purely specular
 #if CONNECT_CAMERA
                 if(!bsdf.IsDelta() && (mUseVC || mLightTraceOnly))
@@ -567,9 +568,7 @@ public:
                     // sub-path, as in traditional BPT. It is also possible to
                     // connect to vertices from any light path, but MIS should
                     // be revisited.
-                    
-                    // vmarz?: doesn't it imply need to revisit MIS also if using Light Vertex Cache?
-                    // I guess just means need to be computed correctly, e.g. cases of delayed computation of some factors
+
                     const Vec2i range(
                         (pathIdx == 0) ? 0 : mPathEnds[pathIdx-1],
                         mPathEnds[pathIdx]);
@@ -615,11 +614,6 @@ public:
 
                 if(!SampleScattering(bsdf, hitPoint, cameraState))
                     break;
-
-                //if (IS_DEBUG_IDX(&pathIdx))
-                //{
-                //    color = Vec3f(10000.f);
-                //}
             }
 
             mFramebuffer.AddColor(screenSample, color);
@@ -848,8 +842,6 @@ private:
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
         DBG_PRINTFI(idx, "      misWeight % 14f \n", misWeight);
 
-
-        // vmarz: radiance not scaled by cosAtLight, also not in Illuminate function
         Vec3f contrib = (cosToLight / (lightPickProb * directPdfW)) * (radiance * bsdfFactor);
 
         DBG_PRINTFI(idx, "unweigh contrb % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
@@ -949,7 +941,7 @@ private:
             mMisVmWeightFactor + aLightVertex.dVCM + aLightVertex.dVC * Mis(lightBsdfRevPdfW));
         // vmarz: lightBsdfRevPdfW is Reverse with respect to light path, e.g. in eye path progression 
         // direction (note same arrow dirs in formula)
-        // note (40) and (41) uses light subpath Y and camera subpath z
+        // note (40) and (41) uses light subpath Y and camera subpath Z
         DBG_PRINTFI(idx, "         wLight = camBsdfDirPdfA * (VmWeightFactor +     light.dVCM +      light.dVC * lgtBsdfRevPdfW) \n");
         DBG_PRINTFI(idx, " % 14f = % 14f * (% 14f + % 14e + % 14e * % 14f) \n", 
             wLight, cameraBsdfDirPdfA, mMisVmWeightFactor, aLightVertex.dVCM, aLightVertex.dVC, lightBsdfRevPdfW);
@@ -965,9 +957,8 @@ private:
         const float misWeight = 1.f / (wLight + 1.f + wCamera);
 
         Vec3f contrib = geometryTerm * cameraBsdfFactor * lightBsdfFactor; 
-        // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering
-        //        2) Should divide contrib also by by lightVertexPickPdf (numConnect/numVertices) in case of use of LightVertexCache ?
-        //           In this case numVertices = numLightSubpathVertices and numConnect=numLightSubpathVertices, therefore cancel out ?
+        // vmarz: 1) Where is divide by path pdf? A: it is predivided into throughput at every scattering\
+
         DBG_PRINTFI(idx, "      misWeight % 14f \n", misWeight);
         DBG_PRINTFI(idx, "unweigh contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
         DBG_PRINTFI(idx, "unweigh contrib = geometryTerm * cameraBsdfFactor * lightBsdfFactor\n");
@@ -1010,7 +1001,8 @@ private:
         oLightState.mDirection = DEBUG_EMIT_DIR;
 #endif
 
-        // vmarz?: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle?
+        // vmarz: AreaLight->Emit sets directPdfW to oDirectPdfA = mInvArea; not really pdf w.r.t solid angle
+        //     A: because direct connection to light source samples a point directly on it  
         DBG_PRINTFI(idx, "         origin % 14f % 14f % 14f \n", oLightState.mOrigin.x, oLightState.mOrigin.y, oLightState.mOrigin.z);
         DBG_PRINTFI(idx, "      direction % 14f % 14f % 14f \n", oLightState.mDirection.x, oLightState.mDirection.y, oLightState.mDirection.z);
         DBG_PRINTFI(idx, "       emission % 14f % 14f % 14f \n", oLightState.mThroughput.x, oLightState.mThroughput.y, oLightState.mThroughput.z);
@@ -1143,8 +1135,11 @@ private:
         // divided) pdf from surface area to image plane area, w.r.t. which the
         // pixel integral is actually defined. We also divide by the number of samples
         // this technique makes, which is equal to the number of light sub-paths
+        
         // vmarz: "to convert the (already divided) pdf from surface area.."
         //         already divided where? throughput?
+        //     A: pixelSamplePdfA_hitpoint = pixelSamplePdfA -> cameraPdfW -> cameraPdfA_surfHitpoint -> pixelSamplePdfA_surfHitpoint
+        //        surfaceToImageFactor represents cameraPdfA_surfHitpoint -> pixelSamplePdfA_surfHitpoint
         Vec3f contrib =  aLightState.mThroughput * bsdfFactor /
             (mLightSubPathCount * surfaceToImageFactor ) ;
         DBG_PRINTFC(dbgCond, " light.throughpt % 14f % 14f % 14f           depth % 14u \n", aLightState.mThroughput.x, aLightState.mThroughput.y, aLightState.mThroughput.z, aLightState.mPathLength)
@@ -1255,7 +1250,7 @@ private:
                                                              //        pi = bsdfDirPdfW * g1 = _p_ro_i * g1 [only for dVCM sqe(dist) terms do not cancel out and are added after tracing]
         aoState.mOrigin  = aHitPoint;
         aoState.mThroughput *= bsdfFactor * (cosThetaOut / bsdfDirPdfW);
-        // vmarz: GEOMETRY TERM NOTE
+        // vmarz: Geometry term note
         //        cosAtHitPoint / sqr(dist) not known at this point until tracking, but still important to note they won't be actually used
         //        since they cancel out due to division of sampled dir solid angle pdf by solid angle to area pdf conversion factor.
         //        See PBR 765

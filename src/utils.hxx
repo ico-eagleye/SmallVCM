@@ -40,7 +40,8 @@ float Luminance(const Vec3f& aRGB)
         0.072169f * aRGB.z;
 }
 
-// vmarz: always asumes one of the mediums to be air, hence doesn't take cosTransmitted, but calculates using Snell's law
+// vmarz: always asumes one of the mediums to be air, hence doesn't take cosTransmitted,
+// but calculates using Snell's law
 // return fraction of reflected light due to hit from dir with aCosInc
 float FresnelDielectric(
     float aCosInc,
@@ -51,7 +52,7 @@ float FresnelDielectric(
 
     float etaIncOverEtaTrans;
 
-    if(aCosInc < 0.f)		// vmarz?: determines if hit from inside/outside?
+    if(aCosInc < 0.f)		// vmarz: determines if hit from inside/outside
     {
         aCosInc = -aCosInc;
         etaIncOverEtaTrans = mIOR;
