@@ -124,7 +124,10 @@ public:
         kSmallMirrorSphere = 64,
         kSmallGlassSphere  = 128,
         kGlossyFloor       = 256,
-        kStandardCornell   = 512,
+        kMirrorFloor       = 512,
+        kStandardCornell   = 1024,
+        kBlueBackWall      = 2048,
+        kLightBoxUpwards   = 4096,
         kBothSmallSpheres  = (kSmallMirrorSphere | kSmallGlassSphere),
         kBothLargeSpheres  = (kLargeMirrorSphere | kLargeGlassSphere),
         kDefault           = (kLightCeiling | kBothSmallSpheres),
@@ -147,8 +150,8 @@ public:
         bool light_point      = (aBoxMask & kLightPoint)      != 0;
         bool light_background = (aBoxMask & kLightBackground) != 0;
 
-        //bool light_box = true;
-        bool light_box = (aBoxMask & kStandardCornell) != 0;
+        bool light_box = true;
+        //bool light_box = (aBoxMask & kStandardCornell) != 0;
 
         // because it looks really weird with it
         if(light_point)
@@ -177,6 +180,7 @@ public:
         mat.Reset();
         mat.mDiffuseReflectance = Vec3f(0.1f);
         mat.mPhongReflectance   = Vec3f(0.7f);
+        //mat.mPhongExponent         = 140.f;
         mat.mPhongExponent         = 90.f;
         mMaterials.push_back(mat);
 
@@ -258,23 +262,30 @@ public:
         int matFloor = 5;
         int matBackWall = 5;
 
+        if ((aBoxMask & kStandardCornell) != 0)
+        {
+            matFloor = 9;
+            matBackWall = 9;
+        }
         if ((aBoxMask & kGlossyFloor) != 0)
         {
             matFloor = 2;
             matBackWall = 8;
         }
-        else if ((aBoxMask & kStandardCornell) != 0)
+        if ((aBoxMask & kMirrorFloor) != 0)
         {
-            matFloor = 9;
-            matBackWall = 9;
+            matFloor = 6;
+            matBackWall = 8;
         }
+        if ((aBoxMask & kBlueBackWall) != 0)
+            matBackWall = 8;
 
         // Floor
         geometryList->mGeometry.push_back(new Triangle(cb[0], cb[4], cb[5], matFloor));
         geometryList->mGeometry.push_back(new Triangle(cb[5], cb[1], cb[0], matFloor));
         // Back wall
-        geometryList->mGeometry.push_back(new Triangle(cb[0], cb[1], cb[2], matFloor));
-        geometryList->mGeometry.push_back(new Triangle(cb[2], cb[3], cb[0], matFloor));
+        geometryList->mGeometry.push_back(new Triangle(cb[0], cb[1], cb[2], matBackWall));
+        geometryList->mGeometry.push_back(new Triangle(cb[2], cb[3], cb[0], matBackWall));
 
 
         // Ceiling
@@ -406,13 +417,27 @@ public:
         {
             // With light box
             mLights.resize(2);
-            AreaLight *l = new AreaLight(lb[0], lb[5], lb[4]);
+            AreaLight *l;
+
+            bool upwards = (aBoxMask & kLightBoxUpwards) != 0;
+            Vec3f d = Vec3f(0.f, 0., -0.1f);
+
+            if (!upwards)
+                l = new AreaLight(lb[0], lb[5], lb[4]);
+            else
+                l = new AreaLight(lb[4]+d, lb[5]+d, lb[0]+d);
+
             //l->mIntensity = Vec3f(0.95492965f);
             l->mIntensity = Vec3f(25.03329895614464f);
             mLights[0] = l;
             mMaterial2Light.insert(std::make_pair(0, 0));
 
             l = new AreaLight(lb[5], lb[0], lb[1]);
+            if (!upwards)
+                l = new AreaLight(lb[5], lb[0], lb[1]);
+            else
+                l = new AreaLight(lb[1]+d, lb[0]+d, lb[5]+d);
+
             //l->mIntensity = Vec3f(0.95492965f);
             l->mIntensity = Vec3f(25.03329895614464f);
             mLights[1] = l;
@@ -428,7 +453,8 @@ public:
 
         if(light_point)
         {
-            PointLight *l = new PointLight(Vec3f(0.0, -0.5, 1.0));
+            //PointLight *l = new PointLight(Vec3f(0.0, -0.5, 1.0)); // org pos
+            PointLight *l = new PointLight(Vec3f(0.0, -0.f, 1.0));
             l->mIntensity = Vec3f(70.f * (INV_PI_F * 0.25f));
             mLights.push_back(l);
         }
@@ -448,6 +474,7 @@ public:
         Vec3f bboxMax(-1e36f);
         mGeometry->GrowBBox(bboxMin, bboxMax);
 
+        const float len = (bboxMax - bboxMin).Length();
         const float radius2 = (bboxMax - bboxMin).LenSqr();
 
         mSceneSphere.mSceneCenter = (bboxMax + bboxMin) * 0.5f;

@@ -142,11 +142,16 @@ AbstractRenderer* CreateRenderer(
 
 // Scene configurations
 uint g_SceneConfigs[] = {
-    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightSun,
-    Scene::kGlossyFloor | Scene::kLargeMirrorSphere | Scene::kLightCeiling,
-    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightPoint,
-    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightBackground,
-    Scene::kStandardCornell | Scene::kLightCeiling
+    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightSun,         //0
+    Scene::kGlossyFloor | Scene::kLargeMirrorSphere | Scene::kLightCeiling,     //1
+    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightPoint,       //2
+    Scene::kGlossyFloor | Scene::kBothSmallSpheres  | Scene::kLightBackground,  //3
+    Scene::kMirrorFloor | Scene::kBothSmallSpheres  | Scene::kLightPoint,       //4
+    Scene::kStandardCornell | Scene::kLightCeiling,                             //5
+    Scene::kBlueBackWall | Scene::kLightCeiling | Scene::kLightBoxUpwards,      //6
+    Scene::kStandardCornell | Scene::kMirrorFloor | Scene::kLightCeiling,       //7
+    Scene::kSmallMirrorSphere | Scene::kLightPoint | Scene::kBlueBackWall,      //8
+    Scene::kSmallGlassSphere | Scene::kLightPoint | Scene::kBlueBackWall        //9
 };
 
 std::string DefaultFilename(
