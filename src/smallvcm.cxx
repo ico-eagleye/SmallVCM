@@ -97,6 +97,7 @@ float render(
     }
 
     clock_t endT = clock();
+    printf("done %d iterations \n", iter+1);
 
     if(oUsedIterations)
         *oUsedIterations = iter+1;
@@ -134,7 +135,7 @@ float render(
         delete renderers[i];
 
     delete [] renderers;
-
+    
     return float(endT - startT) / CLOCKS_PER_SEC;
 }
 
@@ -212,7 +213,7 @@ void FullReport(const Config &aConfig)
             printf("Running %s... \n", config.GetName(config.mAlgorithm));
             fflush(stdout);
             float time = render(config, &numIterations);
-            printf("done in %.2f s\n", time);
+            printf("done %d iterations in %.2f s\n", numIterations, time);
 
             std::string filename = DefaultFilename(g_SceneConfigs[sceneID],
                 *config.mScene, config.mAlgorithm);
