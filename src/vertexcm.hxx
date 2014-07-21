@@ -846,8 +846,7 @@ private:
 
         DBG_PRINTFI(idx, "unweigh contrb % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
         DBG_PRINTFI(idx, "unweigh contrb = (     cosToLight / ( lightPickProb *     directPdfW)) * (      radiance *     bsdfFactor ) \n");
-        DBG_PRINTFI(idx, "unweigh contrb = ( % 14f / (% 14f * % 14f )) * (% 14f * % 14f ) \n",
-            cosToLight, lightPickProb, directPdfW, radiance, bsdfFactor);
+        DBG_PRINTFI(idx, "unweigh contrb = ( % 14f / (% 14f * % 14f )) * (% 14f * % 14f ) \n", cosToLight, lightPickProb, directPdfW, radiance, bsdfFactor);
         contrib *= misWeight;
         DBG_PRINTFI(idx, " weight contrib % 14f % 14f % 14f \n", contrib.x, contrib.y, contrib.z);
 
