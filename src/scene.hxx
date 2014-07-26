@@ -128,6 +128,7 @@ public:
         kStandardCornell   = 1024,
         kBlueBackWall      = 2048,
         kLightBoxUpwards   = 4096,
+        kPureGlossyFloor   = 8192,
         kBothSmallSpheres  = (kSmallMirrorSphere | kSmallGlassSphere),
         kBothLargeSpheres  = (kLargeMirrorSphere | kLargeGlassSphere),
         kDefault           = (kLightCeiling | kBothSmallSpheres),
@@ -178,7 +179,8 @@ public:
 
         // 2) glossy white floor
         mat.Reset();
-        mat.mDiffuseReflectance = Vec3f(0.1f);
+        if (!(aBoxMask & kPureGlossyFloor))
+            mat.mDiffuseReflectance = Vec3f(0.1f);
         mat.mPhongReflectance   = Vec3f(0.7f);
         //mat.mPhongExponent         = 140.f;
         mat.mPhongExponent         = 90.f;

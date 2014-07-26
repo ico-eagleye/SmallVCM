@@ -151,7 +151,8 @@ uint g_SceneConfigs[] = {
     Scene::kBlueBackWall | Scene::kLightCeiling | Scene::kLightBoxUpwards,      //6
     Scene::kStandardCornell | Scene::kMirrorFloor | Scene::kLightCeiling,       //7
     Scene::kSmallMirrorSphere | Scene::kLightPoint | Scene::kBlueBackWall,      //8
-    Scene::kSmallGlassSphere | Scene::kLightPoint | Scene::kBlueBackWall        //9
+    Scene::kSmallGlassSphere | Scene::kLightPoint | Scene::kBlueBackWall,       //9
+    Scene::kGlossyFloor | Scene::kSmallGlassSphere | Scene::kLightPoint | Scene::kBlueBackWall      //10
 };
 
 std::string DefaultFilename(
