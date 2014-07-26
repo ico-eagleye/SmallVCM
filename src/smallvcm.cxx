@@ -97,10 +97,8 @@ float render(
     }
 
     clock_t endT = clock();
-    printf("done %d iterations \n", iter+1);
-
     if(oUsedIterations)
-        *oUsedIterations = iter+1;
+        *oUsedIterations = aConfig.mMaxTime > 0 ? iter : aConfig.mIterations;
 
     // Accumulate from all renderers into a common framebuffer
     int usedRenderers = 0;
@@ -291,8 +289,10 @@ int main(int argc, const char *argv[])
     // Renders the image
     printf("Running: %s... \n", config.GetName(config.mAlgorithm));
     fflush(stdout);
-    float time = render(config);
-    printf("done in %.2f s\n", time);
+    int iter;
+    float time = render(config, &iter);
+
+    printf("done in %.2f s; %d iter; %f iter/s\n", time, iter, iter/time);
 
     // Saves the image
     std::string extension = config.mOutputName.substr(config.mOutputName.length() - 3, 3);
