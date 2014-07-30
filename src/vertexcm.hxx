@@ -314,7 +314,7 @@ public:
         // Factor used to normalize vertex merging contribution.
         // We divide the summed up energy by disk radius and number of light paths
         mVmNormalization = 1.f / (radiusSqr * PI_F * mLightSubPathCount);
-        // vmarz: 1/(PI*r*r) in mVmNormalization coming from P_vm [tech. rep. (10)]
+        // vmarz: 1/(PI*r*r) in mVmNormalization comes density estimation kernel Kr [VCM paper (18)], in this case simply scales by area
         // vmarz: why mLightSubPathCount? because of N_vm in [tech. rep. (11)]
 
         // MIS weight constant [tech. rep. (20)], with n_VC = 1 and n_VM = mLightPathCount
