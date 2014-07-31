@@ -3,14 +3,14 @@
 #include <stdio.h>
 
 #define DEBUG_OUTPUT 0
-#define DEBUG_X 400
-#define DEBUG_Y 460
+#define DEBUG_X 0
+#define DEBUG_Y 250
 #define DEBUG_RES_X 512
 #define DEBUG_RES_Y 512
 #define DEBUG_IDX DEBUG_X + (DEBUG_RES_Y - DEBUG_Y) * DEBUG_RES_X
 #define DEBUG_THREAD_ID 0
 
-#define DEBUG_PIX 1
+#define DEBUG_PIX 0
 #define DEBUG_PIX_X 400
 #define DEBUG_PIX_Y 460
 
